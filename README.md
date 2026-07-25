@@ -100,7 +100,20 @@ uvicorn rittenregistratie.main:app --host 0.0.0.0 --port 8000
 ```
 
 Then expose port 8000 to Meta with Cloudflare Tunnel (`deploy/cloudflared.md`)
-and register the webhook. Run it as a service with `deploy/trip-bot.service`.
+and register the webhook. Run it as a service with `deploy/rittenregistratie.service`.
+
+### Run as a systemd service
+
+`deploy/rittenregistratie.service` runs uvicorn on `127.0.0.1:8000` as your
+user. Adjust `User`, `Group` and the paths to match your host, then:
+
+```bash
+sudo cp deploy/rittenregistratie.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now rittenregistratie.service
+systemctl status rittenregistratie.service
+curl -s http://127.0.0.1:8000/health   # {"status":"ok"}
+```
 
 ## License
 

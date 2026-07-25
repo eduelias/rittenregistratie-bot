@@ -1,0 +1,23 @@
+[Unit]
+Description=rittenregistratie WhatsApp trip logger
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=esaleh
+Group=esaleh
+WorkingDirectory=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot
+EnvironmentFile=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/.env
+ExecStart=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/.venv/bin/uvicorn rittenregistratie.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/data
+
+[Install]
+WantedBy=multi-user.target
