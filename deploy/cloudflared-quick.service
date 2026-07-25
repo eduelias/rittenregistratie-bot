@@ -1,0 +1,14 @@
+[Unit]
+Description=cloudflared quick tunnel for rittenregistratie
+After=network-online.target rittenregistratie.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000
+Restart=always
+RestartSec=5
+User=esaleh
+
+[Install]
+WantedBy=multi-user.target
