@@ -1,20 +1,46 @@
 # rittenregistratie-bot
 
+<p align="center">
+  <img src="docs/assets/banner.svg" alt="rittenregistratie-bot — log your car trips over WhatsApp" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://github.com/eduelias/rittenregistratie-bot/actions/workflows/ci.yml"><img src="https://github.com/eduelias/rittenregistratie-bot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/runs%20on-Raspberry%20Pi-c51a4a.svg" alt="Runs on Raspberry Pi">
+</p>
+
 A self-hosted WhatsApp bot that keeps a **Belastingdienst-compliant trip log
-(rittenregistratie)** for a single car. You send a WhatsApp message with your
+(rittenregistratie)** for one or more cars. You send a WhatsApp message with your
 odometer reading and destination; it appends an audit-ready row to a per-year
 Excel file and replies with a summary.
 
 Designed to help holders of the Dutch
 [*Verklaring geen privégebruik auto*](https://www.belastingdienst.nl/wps/wcm/connect/nl/personeel-en-loon/content/verklaring-geen-privegebruik-auto-aanvragen-wijzigen-intrekken)
 keep the watertight trip administration the Belastingdienst requires, and to run
-comfortably on a Raspberry Pi 5.
+comfortably on a Raspberry Pi.
 
 > **Disclaimer**
 > This software helps you *record* trips. It is **not tax advice** and does not
 > guarantee acceptance by the Belastingdienst. You are solely responsible for
 > the correctness and completeness of your administration. The open-source core
 > never fabricates, invents, or reclassifies trips.
+
+## Features
+
+- **Log by WhatsApp** — one message per trip: `145230 Office`.
+- **Belastingdienst-compliant Excel** — date, begin/end odometer, begin/end
+  address, route, private/business, per year and per car.
+- **Multi-car** — sender phone number selects the car; separate logs per car.
+- **Private/business** classification with the 500 km/year cap awareness.
+- **Ask-for-address** — unknown destinations prompt for an address or a shared
+  location (reverse-geocoded).
+- **Plugin system** — swap odometer source, trajectory provider, delta handling
+  and cap behaviour via entry points; the core stays inert and safe.
+- **Self-hosted** — FastAPI + WhatsApp Cloud API, exposed via Cloudflare Tunnel,
+  runs great on a Raspberry Pi.
+- **`ping` → `pong`** connectivity check built in.
 
 ## How it works
 
@@ -117,4 +143,10 @@ curl -s http://127.0.0.1:8000/health   # {"status":"ok"}
 
 ## License
 
-MIT — see `LICENSE`.
+MIT — see [`LICENSE`](LICENSE).
+
+## Contributing
+
+Contributions are welcome! Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) and
+our [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). For security issues, see
+[`SECURITY.md`](SECURITY.md).
