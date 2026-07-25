@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy — RittenRegistratie-Bot</title>
+  <style>
+    body { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+           max-width: 780px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.6; }
+    h1 { color: #128C7E; }
+    h2 { color: #0B1F17; margin-top: 1.8em; }
+    code { background: #f0f5f2; padding: 2px 5px; border-radius: 4px; }
+    footer { margin-top: 3em; font-size: 0.9em; color: #666; }
+    a { color: #128C7E; }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy</h1>
+  <p><strong>Service:</strong> RittenRegistratie-Bot — a self-hosted WhatsApp bot
+  for recording personal/business car trips (rittenregistratie).</p>
+  <p><strong>Operator:</strong> Du7 Technology Services</p>
+  <p><strong>Last updated:</strong> 25 July 2026</p>
+
+  <h2>1. Overview</h2>
+  <p>RittenRegistratie-Bot is a private, self-hosted tool. It receives WhatsApp
+  messages that you send to it and records the trip information they contain
+  (odometer readings, destinations) into a spreadsheet stored on the operator's
+  own server. It is intended for the operator's own use and explicitly
+  authorised users only.</p>
+
+  <h2>2. Information we process</h2>
+  <ul>
+    <li><strong>WhatsApp message content</strong> you send to the bot (e.g. an
+      odometer reading and a destination), and, if you choose to share it, a
+      location you send.</li>
+    <li><strong>Your WhatsApp phone number</strong>, used solely to identify
+      which vehicle a message belongs to and to reply to you.</li>
+    <li><strong>Derived trip records</strong> (date, start/end odometer,
+      start/end address, distance, business/private classification).</li>
+  </ul>
+  <p>We do not collect message content from chats other than those sent directly
+  to the bot. We do not use the data for advertising or profiling.</p>
+
+  <h2>3. How we use the information</h2>
+  <ul>
+    <li>To generate and maintain a trip log (rittenregistratie) for tax
+      record-keeping purposes.</li>
+    <li>To reply to you with a confirmation of the recorded trip.</li>
+    <li>Optionally, to resolve an address from a place name or a shared location
+      via the Google Maps API.</li>
+  </ul>
+
+  <h2>4. Legal basis</h2>
+  <p>Processing is based on the legitimate interest of, and consent given by, the
+  authorised users who choose to send trips to the bot, and on the need to keep
+  accurate mileage administration.</p>
+
+  <h2>5. Data sharing</h2>
+  <p>Trip data is stored locally on the operator's self-hosted server and is not
+  sold or shared with third parties, except:</p>
+  <ul>
+    <li><strong>Meta/WhatsApp</strong>, which transmits the messages between you
+      and the bot (subject to WhatsApp's own privacy policy).</li>
+    <li><strong>Google Maps Platform</strong>, only when address/route lookup is
+      enabled, and only the addresses/coordinates needed for that lookup.</li>
+  </ul>
+
+  <h2>6. Data retention</h2>
+  <p>Trip records are retained for as long as required for tax administration
+  (typically up to 7 years under Dutch law) or until the operator deletes them.
+  You may request deletion of your data at any time.</p>
+
+  <h2>7. Security</h2>
+  <p>Incoming webhooks are verified cryptographically, only allow-listed phone
+  numbers are accepted, and the service is exposed over HTTPS. Access tokens and
+  secrets are not stored in the public source code.</p>
+
+  <h2>8. Your rights</h2>
+  <p>You may request access to, correction of, or deletion of your personal data,
+  and object to its processing, by contacting the operator.</p>
+
+  <h2>9. Contact</h2>
+  <p>For privacy requests or questions, contact the operator via the project
+  repository:
+  <a href="https://github.com/eduelias/rittenregistratie-bot">github.com/eduelias/rittenregistratie-bot</a>.</p>
+
+  <h2>10. Changes</h2>
+  <p>This policy may be updated. The latest version is always available at this
+  URL.</p>
+
+  <footer>
+    RittenRegistratie-Bot is open-source software (MIT). This policy covers the
+    operator's hosted instance. It is not legal or tax advice.
+  </footer>
+</body>
+</html>
