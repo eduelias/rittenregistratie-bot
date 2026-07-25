@@ -115,6 +115,18 @@ in separate plugin packages.
 
 See `docs/plugins.md`.
 
+## Architecture
+
+<p align="center">
+  <img src="docs/assets/architecture.svg" alt="rittenregistratie-bot architecture" width="100%">
+</p>
+
+Your WhatsApp message → Meta Cloud API → Cloudflare Tunnel → the FastAPI webhook
+on your Raspberry Pi. The parser turns it into a trip, the (inert) core Engine
+resolves the car, updates state and appends a compliant Excel row, then replies.
+Four plugin entry points let you swap the odometer source, trajectory provider,
+delta handling and private-cap behaviour without touching the core.
+
 ## Quick start
 
 ```bash
