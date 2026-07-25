@@ -76,7 +76,7 @@ def test_extract_statuses_empty():
 def test_graph_version_default():
     from rittenregistratie.config import Settings
     s = Settings(config_dir="config")
-    assert s.whatsapp_graph_version == "v23.0"
+    assert s.whatsapp_graph_version == "v25.0"
 
 
 def test_send_message_uses_graph_url(monkeypatch):
@@ -98,6 +98,6 @@ def test_send_message_uses_graph_url(monkeypatch):
 
     monkeypatch.setattr(wa.httpx, "AsyncClient", FakeClient)
     ok = asyncio.run(wa.send_message("t", "PID", "31600", "hi",
-                                     graph_url="https://graph.facebook.com/v23.0"))
+                                     graph_url="https://graph.facebook.com/v25.0"))
     assert ok
-    assert captured["url"] == "https://graph.facebook.com/v23.0/PID/messages"
+    assert captured["url"] == "https://graph.facebook.com/v25.0/PID/messages"

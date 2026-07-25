@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 AT=$(grep '^RIT_WHATSAPP_TOKEN=' .env | cut -d= -f2-)
 PID=$(grep '^RIT_WHATSAPP_PHONE_NUMBER_ID=' .env | cut -d= -f2-)
 TO="${1:-31618337245}"
-RESP=$(curl -s -X POST "https://graph.facebook.com/v23.0/${PID}/messages" \
+RESP=$(curl -s -X POST "https://graph.facebook.com/v25.0/${PID}/messages" \
   -H "Authorization: Bearer ${AT}" -H "Content-Type: application/json" \
   -d "{\"messaging_product\":\"whatsapp\",\"to\":\"${TO}\",\"type\":\"text\",\"text\":{\"body\":\"delivery check\"}}")
 printf '%s' "$RESP" | python3 -c '
