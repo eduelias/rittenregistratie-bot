@@ -66,6 +66,15 @@ def load_yaml(path: Path) -> dict:
         return yaml.safe_load(fh) or {}
 
 
+def save_location(path: Path, name: str, address: str) -> None:
+    """Add or update a known location in a locations.yaml file."""
+    data = load_yaml(path)
+    data[name] = {"address": address}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        yaml.safe_dump(data, fh, sort_keys=True, allow_unicode=True)
+
+
 _settings: Optional[Settings] = None
 
 

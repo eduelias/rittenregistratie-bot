@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 
 @dataclass
@@ -18,6 +18,8 @@ class State:
     # keyed by year (string) -> integer km
     private_km: Dict[str, int] = field(default_factory=dict)
     delta_pool_km: Dict[str, int] = field(default_factory=dict)
+    # a trip awaiting an address for an unknown, non-private destination
+    pending: Optional[dict] = None
 
     def private_ytd(self, year: int) -> int:
         return self.private_km.get(str(year), 0)
