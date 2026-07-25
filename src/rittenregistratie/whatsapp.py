@@ -10,7 +10,9 @@ import httpx
 
 log = logging.getLogger("rittenregistratie.whatsapp")
 
-GRAPH_URL = "https://graph.facebook.com/v21.0"
+# Default Meta Graph API version. Callers may override via graph_url/version.
+GRAPH_VERSION = "v23.0"
+GRAPH_URL = f"https://graph.facebook.com/{GRAPH_VERSION}"
 
 
 def verify_signature(app_secret: str, payload: bytes, header: str) -> bool:
@@ -106,7 +108,8 @@ def reverse_geocode(lat, lon, api_key: str = "") -> str:
 
 
 async def send_message(
-    token: str, phone_number_id: str, to: str, text: str
+    token: str, phone_number_id: str, to: str, text: str,
+    graph_url: str = GRAPH_URL,
 ) -> bool:
     """Send a WhatsApp text reply. Returns True on success, False otherwise.
 
@@ -116,7 +119,7 @@ async def send_message(
     """
     if not token or not phone_number_id:
         return False
-    url = f"{GRAPH_URL}/{phone_number_id}/messages"
+    url = f"{graph_url}/{phone_number_id}/messages"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(

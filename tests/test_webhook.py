@@ -71,3 +71,33 @@ def test_extract_statuses():
 def test_extract_statuses_empty():
     from rittenregistratie.whatsapp import extract_statuses
     assert extract_statuses({"entry": [{"changes": [{"value": {}}]}]}) == []
+
+
+def test_graph_version_default():
+    from rittenregistratie.config import Settings
+    s = Settings(config_dir="config")
+    assert s.whatsapp_graph_version == "v23.0"
+
+
+def test_send_message_uses_graph_url(monkeypatch):
+    import asyncio
+    import rittenregistratie.whatsapp as wa
+    captured = {}
+
+    class FakeResp:
+        status_code = 200
+        text = "{}"
+
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, **kw):
+            captured["url"] = url
+            return FakeResp()
+
+    monkeypatch.setattr(wa.httpx, "AsyncClient", FakeClient)
+    ok = asyncio.run(wa.send_message("t", "PID", "31600", "hi",
+                                     graph_url="https://graph.facebook.com/v23.0"))
+    assert ok
+    assert captured["url"] == "https://graph.facebook.com/v23.0/PID/messages"

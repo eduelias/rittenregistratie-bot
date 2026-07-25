@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     whatsapp_phone_number_id: str = ""
     whatsapp_app_secret: str = ""
     whatsapp_verify_token: str = "changeme"
+    whatsapp_graph_version: str = "v23.0"  # Meta Graph API version
     allowed_sender: str = ""  # E.164 without '+', e.g. 31612345678
 
     # Trajectory
