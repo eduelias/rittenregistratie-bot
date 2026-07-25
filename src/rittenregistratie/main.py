@@ -39,7 +39,7 @@ async def selftest(to: str = "") -> dict:
     if not (_settings.whatsapp_token and _settings.whatsapp_phone_number_id):
         return {"ok": False, "error": "whatsapp token/phone id not configured"}
     url = (
-        f"https://graph.facebook.com/v21.0/"
+        f"https://graph.facebook.com/{_settings.whatsapp_graph_version}/"
         f"{_settings.whatsapp_phone_number_id}/messages"
     )
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -136,6 +136,7 @@ async def webhook(request: Request) -> Response:
         _settings.whatsapp_phone_number_id,
         sender,
         reply,
+        graph_url=f"https://graph.facebook.com/{_settings.whatsapp_graph_version}",
     )
     if not delivered:
         # Any trip was already logged; only the outbound reply failed.
