@@ -107,10 +107,18 @@ async def send_message(
                 },
             )
         if resp.status_code >= 400:
+            body = resp.text
             log.warning(
                 "WhatsApp reply to %s failed (%s): %s",
-                to, resp.status_code, resp.text,
+                to, resp.status_code, body,
             )
+            if "131037" in body or "131047" in body:
+                log.warning(
+                    "HINT: with a Meta Public Test Number, the recipient %s must "
+                    "be added and verified in API Setup -> 'To' before replies can "
+                    "be delivered. This does not affect trip logging.",
+                    to,
+                )
             return False
         return True
     except httpx.HTTPError as exc:
