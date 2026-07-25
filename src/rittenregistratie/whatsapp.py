@@ -23,18 +23,60 @@ def verify_signature(app_secret: str, payload: bytes, header: str) -> bool:
 
 
 def extract_message(body: dict) -> Optional[dict]:
-    """Return {from, text} for the first text message, or None."""
+    """Return a dict describing the first message.
+
+    Keys: ``from``; and one of ``text`` (str) or ``location`` ({latitude,
+    longitude, address?, name?}). For non-text/non-location types, ``text`` is
+    None.
+    """
     try:
         change = body["entry"][0]["changes"][0]["value"]
         messages = change.get("messages")
         if not messages:
             return None
         msg = messages[0]
-        if msg.get("type") != "text":
-            return {"from": msg.get("from"), "text": None}
-        return {"from": msg["from"], "text": msg["text"]["body"]}
+        sender = msg.get("from")
+        mtype = msg.get("type")
+        if mtype == "text":
+            return {"from": sender, "text": msg["text"]["body"]}
+        if mtype == "location":
+            loc = msg.get("location", {})
+            return {
+                "from": sender,
+                "text": None,
+                "location": {
+                    "latitude": loc.get("latitude"),
+                    "longitude": loc.get("longitude"),
+                    "address": loc.get("address"),
+                    "name": loc.get("name"),
+                },
+            }
+        return {"from": sender, "text": None}
     except (KeyError, IndexError, TypeError):
         return None
+
+
+def reverse_geocode(lat, lon, api_key: str = "") -> str:
+    """Reverse-geocode a lat/lon into a human address via Google (best effort).
+
+    Returns '' if no key is set or the lookup fails, so callers can fall back to
+    storing the raw coordinates.
+    """
+    if not api_key or lat is None or lon is None:
+        return ""
+    try:
+        resp = httpx.get(
+            "https://maps.googleapis.com/maps/api/geocode/json",
+            params={"latlng": f"{lat},{lon}", "key": api_key},
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        results = resp.json().get("results") or []
+        if results:
+            return results[0].get("formatted_address", "")
+    except (httpx.HTTPError, KeyError, ValueError):
+        pass
+    return ""
 
 
 async def send_message(

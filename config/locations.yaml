@@ -1,4 +1,26 @@
 Home:
-  address: "Dorpsstraat 1, 3500 Utrecht"
-Office:
-  address: "Keizersgracht 1, 1015 Amsterdam"
+  address: "Home - Buitenhof 128, 1354 GT Almere"
+SBP:
+  address: "SBP - Boeing Avenue 271, 1119 PD Schiphol-Rijk"
+shr:
+  address: "SBP - Boeing Avenue 271, 1119 PD Schiphol-Rijk"
+hague:
+  address: "Waldorpstraat 3, 2521 CA Den Haag"
+spg:
+  address: "Waldorpstraat 3, 2521 CA Den Haag"
+pnl:
+  address: "Waldorpstraat 3, 2521 CA Den Haag"
+rtm:
+  address: "Oostmaaslaan 53-71, Rotterdam"
+rotterdam:
+  address: "Oostmaaslaan 53-71, Rotterdam"
+raymond:
+  address: "Gerberastraat 48, 1338 VD Almere"
+axe:
+  address: "Almere Underground - Sallandsekant 128, 1348 AN Almere"
+tijn:
+  address: "Tijn Akersloot - Strandafgang Paulus Loot 1B, 2042 AD Zandvoort"
+service:
+  address: "Service - De Huchtstraat 10, Almere"
+rai:
+  address: "RAI - Europaplein 24, Amsterdam"

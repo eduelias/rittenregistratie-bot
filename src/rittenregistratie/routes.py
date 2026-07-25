@@ -44,5 +44,10 @@ class RouteBook:
             return loc["address"]
         return name
 
+    def is_known(self, name: str) -> bool:
+        """True if the name maps to a known location with an address."""
+        loc = self._locations.get(name)
+        return bool(loc and loc.get("address"))
+
     def lookup(self, origin: str, destination: str) -> Optional[RouteInfo]:
         return self._routes.get(f"{origin}->{destination}")

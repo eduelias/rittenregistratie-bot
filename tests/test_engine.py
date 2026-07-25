@@ -73,3 +73,42 @@ def test_unknown_number_rejected(settings):
     eng = Engine(settings)
     with pytest.raises(UnknownCarError):
         eng.handle_text("145040 Office", "31600000000", now=datetime(2026, 1, 5, 9, 0))
+
+
+def test_unknown_destination_prompts_for_address(settings):
+    eng = Engine(settings)
+    reply = eng.handle_text("145050 Gym", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    assert "don't have an address" in reply.lower()
+    # No trip written yet
+    from pathlib import Path
+    assert not (settings.data_dir / "trips-default_car-2026.xlsx").exists()
+
+
+def test_unknown_destination_resolved_by_text(settings):
+    eng = Engine(settings)
+    eng.handle_text("145050 Gym", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    reply = eng.handle_text("Sportlaan 1, Almere", "31612345678", now=datetime(2026, 1, 5, 9, 5))
+    assert "Sportlaan 1" in reply
+    wb = load_workbook(settings.data_dir / "trips-default_car-2026.xlsx")
+    rows = list(wb.active.iter_rows(values_only=True))
+    assert rows[-1][4] == "Sportlaan 1, Almere"  # EndAddress
+    # location learned for next time
+    reply2 = eng.handle_text("145090 Gym", "31612345678", now=datetime(2026, 1, 6, 9, 0))
+    assert "don't have an address" not in reply2.lower()
+
+
+def test_unknown_destination_resolved_by_location(settings):
+    eng = Engine(settings)
+    eng.handle_text("145050 Gym", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    reply = eng.handle_location(
+        "31612345678", 52.37, 4.90, address="Damrak 1, Amsterdam",
+        now=datetime(2026, 1, 5, 9, 5),
+    )
+    assert "Damrak 1" in reply
+
+
+def test_private_unknown_destination_not_prompted(settings):
+    eng = Engine(settings)
+    reply = eng.handle_text("145030 beach private", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    assert "don't have an address" not in reply.lower()
+    assert "private" in reply.lower()

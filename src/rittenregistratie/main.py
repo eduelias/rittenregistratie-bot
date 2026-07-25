@@ -58,17 +58,28 @@ async def webhook(request: Request) -> Response:
         log.warning("Ignoring message from unregistered number %s", sender)
         return Response(status_code=200, content="ok")
 
+    location = msg.get("location")
     text = msg.get("text")
-    if not text:
-        reply = "Please send a text message: <odometer> <destination> [private]"
-    else:
-        try:
+    try:
+        if location:
+            reply = _engine.handle_location(
+                sender,
+                location.get("latitude"),
+                location.get("longitude"),
+                location.get("address") or "",
+            )
+        elif text:
             reply = _engine.handle_text(text, sender)
-        except (ParseError, EngineError, UnknownCarError) as exc:
-            reply = f"Could not log trip: {exc}"
-        except Exception:  # pragma: no cover - defensive
-            log.exception("Unexpected error handling message")
-            reply = "Internal error while logging the trip."
+        else:
+            reply = (
+                "Please send: <odometer> <destination> [private], "
+                "or share a location when asked."
+            )
+    except (ParseError, EngineError, UnknownCarError) as exc:
+        reply = f"Could not log trip: {exc}"
+    except Exception:  # pragma: no cover - defensive
+        log.exception("Unexpected error handling message")
+        reply = "Internal error while logging the trip."
 
     await whatsapp.send_message(
         _settings.whatsapp_token,
