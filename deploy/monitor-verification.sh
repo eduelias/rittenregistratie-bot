@@ -35,11 +35,11 @@ while true; do
 
   resp=$(curl -s -X POST "https://graph.facebook.com/v21.0/${PID}/messages" \
     -H "Authorization: Bearer ${AT}" -H "Content-Type: application/json" \
-    -d "{\"messaging_product\":\"whatsapp\",\"to\":\"${TO}\",\"type\":\"text\",\"text\":{\"body\":\"verification monitor\"}}")
+    -d "{\"messaging_product\":\"whatsapp\",\"to\":\"${TO}\",\"type\":\"text\",\"text\":{\"body\":\"✅ Verified! Your trip-logger bot can now reply. Send 'ping' to test, or '<odometer> <destination>' to log a trip.\"}}")
   code=$(printf '%s' "$resp" | python3 -c 'import sys,json;d=json.load(sys.stdin);e=d.get("error");print(e.get("code") if e else "OK")' 2>/dev/null || echo "PARSE_ERR")
 
   if [ "$code" = "OK" ]; then
-    echo "[$ts] ✅ DELIVERY WORKS — message sent. Done."
+    echo "[$ts] ✅ DELIVERY WORKS — confirmation message sent to ${TO}. Done."
     exit 0
   else
     echo "[$ts] ⏳ send blocked (code ${code})."

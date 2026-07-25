@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest an idea for the bot
+title: "[feat]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      placeholder: I'm always frustrated when ...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Core (parsing, Excel, webhook)
+        - Plugin (odometer / trajectory / delta / privatecap)
+        - Deployment / docs
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: principle
+    attributes:
+      label: Compliance principle
+      options:
+        - label: This does not make the open-source core fabricate or reclassify trips (such logic belongs in a plugin).
+          required: true
