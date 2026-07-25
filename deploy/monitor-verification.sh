@@ -24,7 +24,7 @@ while true; do
   ts=$(date '+%Y-%m-%d %H:%M:%S')
 
   if [ -n "$BUSINESS_ID" ]; then
-    vstat=$(curl -s "https://graph.facebook.com/v23.0/${BUSINESS_ID}?fields=verification_status,name" \
+    vstat=$(curl -s "https://graph.facebook.com/v25.0/${BUSINESS_ID}?fields=verification_status,name" \
       -H "Authorization: Bearer ${AT}" \
       | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("verification_status", d.get("error",{}).get("message","?")))' 2>/dev/null || echo "?")
     echo "[$ts] business verification_status: ${vstat}"
@@ -33,7 +33,7 @@ while true; do
     fi
   fi
 
-  resp=$(curl -s -X POST "https://graph.facebook.com/v23.0/${PID}/messages" \
+  resp=$(curl -s -X POST "https://graph.facebook.com/v25.0/${PID}/messages" \
     -H "Authorization: Bearer ${AT}" -H "Content-Type: application/json" \
     -d "{\"messaging_product\":\"whatsapp\",\"to\":\"${TO}\",\"type\":\"text\",\"text\":{\"body\":\"✅ Verified! Your trip-logger bot can now reply. Send 'ping' to test, or '<odometer> <destination>' to log a trip.\"}}")
   code=$(printf '%s' "$resp" | python3 -c 'import sys,json;d=json.load(sys.stdin);e=d.get("error");print(e.get("code") if e else "OK")' 2>/dev/null || echo "PARSE_ERR")

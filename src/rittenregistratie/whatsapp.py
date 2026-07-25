@@ -11,7 +11,7 @@ import httpx
 log = logging.getLogger("rittenregistratie.whatsapp")
 
 # Default Meta Graph API version. Callers may override via graph_url/version.
-GRAPH_VERSION = "v23.0"
+GRAPH_VERSION = "v25.0"
 GRAPH_URL = f"https://graph.facebook.com/{GRAPH_VERSION}"
 
 
