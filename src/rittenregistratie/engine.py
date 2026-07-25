@@ -51,17 +51,30 @@ class Engine:
             fallback_seed_odometer=settings.seed_odometer,
         )
 
-        # Instantiate configured plugins (shared across cars).
+        # Instantiate configured plugins (shared across cars). Any trajectory
+        # provider whose constructor accepts an ``api_key`` parameter receives
+        # the configured Google key; others are constructed with no arguments.
         traj_cls = registry.get_trajectory_provider(settings.trajectory_provider)
-        self.trajectory = (
-            traj_cls(settings.google_maps_api_key)
-            if settings.trajectory_provider == "google"
-            else traj_cls()
+        self.trajectory = self._instantiate_trajectory(
+            traj_cls, settings.google_maps_api_key
         )
         self.allocator = registry.get_delta_allocator(settings.delta_allocator)()
         self.cap_plugin = registry.get_private_cap_plugin(
             settings.private_cap_plugin
         )()
+
+    @staticmethod
+    def _instantiate_trajectory(traj_cls, api_key: str):
+        """Construct a trajectory provider, passing api_key only if accepted."""
+        import inspect
+
+        try:
+            params = inspect.signature(traj_cls).parameters
+        except (TypeError, ValueError):
+            params = {}
+        if "api_key" in params:
+            return traj_cls(api_key)
+        return traj_cls()
 
     def resolve_car(self, sender: str) -> Car:
         car = self.cars.resolve(sender)
