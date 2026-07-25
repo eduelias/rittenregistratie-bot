@@ -61,7 +61,10 @@ async def webhook(request: Request) -> Response:
     location = msg.get("location")
     text = msg.get("text")
     try:
-        if location:
+        if text and text.strip().lower() in ("ping", "/ping"):
+            # Simple connectivity check: no trip logged, no state touched.
+            reply = "pong"
+        elif location:
             reply = _engine.handle_location(
                 sender,
                 location.get("latitude"),
@@ -88,9 +91,9 @@ async def webhook(request: Request) -> Response:
         reply,
     )
     if not delivered:
-        # The trip is already logged; only the confirmation reply failed.
+        # Any trip was already logged; only the outbound reply failed.
         log.warning(
-            "Reply not delivered to %s. Trip was still logged. Message: %s",
+            "Reply not delivered to %s (see WhatsApp error above). Reply was: %s",
             sender, reply.replace(chr(10), " | "),
         )
     return Response(status_code=200, content="ok")
