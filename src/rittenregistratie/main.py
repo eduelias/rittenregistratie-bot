@@ -23,6 +23,39 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/selftest")
+async def selftest(to: str = "") -> dict:
+    """Send a test WhatsApp message and report the raw Graph API result.
+
+    Use ?to=<E.164 without +> to override the recipient; defaults to the
+    configured allowed sender. Helps confirm whether a recipient is allow-listed
+    on a Meta test number (success vs error 131037) without logging any trip.
+    """
+    import httpx
+
+    recipient = to or _settings.allowed_sender
+    if not recipient:
+        return {"ok": False, "error": "no recipient; pass ?to=<number>"}
+    if not (_settings.whatsapp_token and _settings.whatsapp_phone_number_id):
+        return {"ok": False, "error": "whatsapp token/phone id not configured"}
+    url = (
+        f"https://graph.facebook.com/v21.0/"
+        f"{_settings.whatsapp_phone_number_id}/messages"
+    )
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.post(
+            url,
+            headers={"Authorization": f"Bearer {_settings.whatsapp_token}"},
+            json={
+                "messaging_product": "whatsapp",
+                "to": recipient,
+                "type": "text",
+                "text": {"body": "selftest: bot -> you. If you see this, replies work."},
+            },
+        )
+    return {"ok": resp.status_code < 400, "status": resp.status_code, "body": resp.json()}
+
+
 @app.get("/webhook")
 async def verify(request: Request) -> Response:
     """Meta webhook verification handshake."""
