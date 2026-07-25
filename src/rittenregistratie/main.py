@@ -81,10 +81,16 @@ async def webhook(request: Request) -> Response:
         log.exception("Unexpected error handling message")
         reply = "Internal error while logging the trip."
 
-    await whatsapp.send_message(
+    delivered = await whatsapp.send_message(
         _settings.whatsapp_token,
         _settings.whatsapp_phone_number_id,
         sender,
         reply,
     )
+    if not delivered:
+        # The trip is already logged; only the confirmation reply failed.
+        log.warning(
+            "Reply not delivered to %s. Trip was still logged. Message: %s",
+            sender, reply.replace(chr(10), " | "),
+        )
     return Response(status_code=200, content="ok")

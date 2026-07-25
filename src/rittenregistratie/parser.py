@@ -55,7 +55,9 @@ def parse_message(text: str) -> ParsedMessage:
     remainder = " ".join(tokens[1:])
     is_private = bool(_PRIVATE_RE.search(remainder))
     destination = _PRIVATE_RE.sub("", remainder).strip()
-    destination = re.sub(r"\s{2,}", " ", destination).strip(" -")
+    # tidy up leftovers: empty brackets/parens and stray punctuation
+    destination = re.sub(r"[\(\[\{]\s*[\)\]\}]", "", destination)
+    destination = re.sub(r"\s{2,}", " ", destination).strip(" -()[]{}")
 
     if not destination:
         # A bare "private" trip with no named destination is allowed.

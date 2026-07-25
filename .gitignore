@@ -11,3 +11,6 @@ data/
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
+
+# personal car registry (contains phone numbers)
+config/cars.yaml
