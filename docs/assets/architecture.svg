@@ -1,0 +1,132 @@
+<svg width="1000" height="720" viewBox="0 0 1000 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="rittenregistratie-bot architecture diagram">
+  <defs>
+    <linearGradient id="hdr" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#25D366"/><stop offset="1" stop-color="#128C7E"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#5b6b63"/>
+    </marker>
+    <style>
+      .lbl   { font: 600 15px 'Segoe UI', Arial, sans-serif; fill: #12352a; }
+      .sub   { font: 400 12px 'Segoe UI', Arial, sans-serif; fill: #4a5a52; }
+      .badge { font: 700 13px 'Segoe UI', Arial, sans-serif; fill: #ffffff; }
+      .h     { font: 700 26px 'Segoe UI', Arial, sans-serif; fill: #0B1F17; }
+      .note  { font: 400 13px 'Segoe UI', Arial, sans-serif; fill: #6b7a72; }
+      .plug  { font: 600 13px 'SF Mono','Consolas',monospace; fill: #0B1F17; }
+      .edge  { stroke: #5b6b63; stroke-width: 2; fill: none; }
+    </style>
+  </defs>
+
+  <rect width="1000" height="720" fill="#F4FBF7"/>
+  <text class="h" x="40" y="52">rittenregistratie-bot — architecture</text>
+
+  <!-- User phone -->
+  <g transform="translate(40,100)">
+    <rect width="180" height="90" rx="14" fill="#ffffff" stroke="#128C7E" stroke-width="2"/>
+    <rect width="180" height="28" rx="14" fill="url(#hdr)"/>
+    <rect y="14" width="180" height="14" fill="url(#hdr)"/>
+    <text class="badge" x="16" y="19">Your WhatsApp</text>
+    <text class="lbl" x="16" y="52">“145230 Office”</text>
+    <text class="sub" x="16" y="72">“ping” · share location</text>
+  </g>
+
+  <!-- Meta Cloud API -->
+  <g transform="translate(300,100)">
+    <rect width="180" height="90" rx="14" fill="#ffffff" stroke="#128C7E" stroke-width="2"/>
+    <rect width="180" height="28" rx="14" fill="url(#hdr)"/>
+    <rect y="14" width="180" height="14" fill="url(#hdr)"/>
+    <text class="badge" x="16" y="19">Meta Cloud API</text>
+    <text class="lbl" x="16" y="52">WhatsApp webhook</text>
+    <text class="sub" x="16" y="72">signed X-Hub-256</text>
+  </g>
+
+  <!-- Cloudflare Tunnel -->
+  <g transform="translate(560,100)">
+    <rect width="180" height="90" rx="14" fill="#ffffff" stroke="#128C7E" stroke-width="2"/>
+    <rect width="180" height="28" rx="14" fill="url(#hdr)"/>
+    <rect y="14" width="180" height="14" fill="url(#hdr)"/>
+    <text class="badge" x="16" y="19">Cloudflare Tunnel</text>
+    <text class="lbl" x="16" y="52">public HTTPS</text>
+    <text class="sub" x="16" y="72">→ 127.0.0.1:8000</text>
+  </g>
+
+  <!-- FastAPI app box -->
+  <g transform="translate(560,240)">
+    <rect width="400" height="150" rx="16" fill="#E7F7EE" stroke="#25D366" stroke-width="2"/>
+    <text class="lbl" x="20" y="30">FastAPI webhook  (Raspberry Pi)</text>
+    <g transform="translate(20,46)">
+      <rect width="170" height="40" rx="8" fill="#ffffff" stroke="#128C7E"/>
+      <text class="plug" x="14" y="25">/webhook</text>
+      <rect x="190" width="170" height="40" rx="8" fill="#ffffff" stroke="#128C7E"/>
+      <text class="plug" x="204" y="25">/health /selftest</text>
+    </g>
+    <g transform="translate(20,96)">
+      <rect width="360" height="40" rx="8" fill="#ffffff" stroke="#128C7E"/>
+      <text class="plug" x="14" y="25">parser → Engine (ping/pong, trips)</text>
+    </g>
+  </g>
+
+  <!-- Engine core -->
+  <g transform="translate(560,430)">
+    <rect width="400" height="70" rx="14" fill="#ffffff" stroke="#128C7E" stroke-width="2"/>
+    <text class="lbl" x="20" y="30">Engine (core, inert &amp; safe)</text>
+    <text class="sub" x="20" y="52">resolve car · state · route lookup · never fabricates trips</text>
+  </g>
+
+  <!-- Outputs -->
+  <g transform="translate(560,540)">
+    <rect width="190" height="70" rx="12" fill="#ffffff" stroke="#128C7E" stroke-width="2"/>
+    <text class="lbl" x="16" y="28">Excel per car/year</text>
+    <text class="sub" x="16" y="50">trips-&lt;car&gt;-&lt;year&gt;.xlsx</text>
+  </g>
+  <g transform="translate(770,540)">
+    <rect width="190" height="70" rx="12" fill="#ffffff" stroke="#128C7E" stroke-width="2"/>
+    <text class="lbl" x="16" y="28">state-&lt;car&gt;.json</text>
+    <text class="sub" x="16" y="50">last odo · private YTD</text>
+  </g>
+
+  <!-- Plugins -->
+  <g transform="translate(40,240)">
+    <rect width="470" height="370" rx="16" fill="#FFF7E6" stroke="#E0A800" stroke-width="2"/>
+    <text class="lbl" x="20" y="30">Plugin entry points  (swap without touching core)</text>
+
+    <g transform="translate(20,48)">
+      <rect width="450" height="70" rx="10" fill="#ffffff" stroke="#E0A800"/>
+      <text class="plug" x="14" y="26">rittenregistratie.odometer</text>
+      <text class="sub" x="14" y="48">whatsapp_manual · mercedes_stub</text>
+    </g>
+    <g transform="translate(20,128)">
+      <rect width="450" height="70" rx="10" fill="#ffffff" stroke="#E0A800"/>
+      <text class="plug" x="14" y="26">rittenregistratie.trajectory</text>
+      <text class="sub" x="14" y="48">maps_link · google · google_route (private)</text>
+    </g>
+    <g transform="translate(20,208)">
+      <rect width="450" height="70" rx="10" fill="#ffffff" stroke="#E0A800"/>
+      <text class="plug" x="14" y="26">rittenregistratie.delta</text>
+      <text class="sub" x="14" y="48">noop (core) · rule / llm (private)</text>
+    </g>
+    <g transform="translate(20,288)">
+      <rect width="450" height="70" rx="10" fill="#ffffff" stroke="#E0A800"/>
+      <text class="plug" x="14" y="26">rittenregistratie.privatecap</text>
+      <text class="sub" x="14" y="48">warn (core) · reallocate (private)</text>
+    </g>
+  </g>
+
+  <!-- edges -->
+  <g>
+    <path class="edge" d="M220 145 H300" marker-end="url(#arrow)"/>
+    <path class="edge" d="M480 145 H560" marker-end="url(#arrow)"/>
+    <path class="edge" d="M650 190 V240" marker-end="url(#arrow)"/>
+    <path class="edge" d="M760 390 V430" marker-end="url(#arrow)"/>
+    <path class="edge" d="M700 500 V540" marker-end="url(#arrow)"/>
+    <path class="edge" d="M820 500 V540" marker-end="url(#arrow)"/>
+    <!-- engine to plugins -->
+    <path class="edge" d="M560 465 H510" marker-end="url(#arrow)"/>
+    <!-- reply back -->
+    <path class="edge" d="M600 240 C 520 210, 360 210, 300 175" stroke-dasharray="6 5" marker-end="url(#arrow)"/>
+    <text class="note" x="330" y="222">reply (pong / trip summary)</text>
+  </g>
+
+  <text class="note" x="40" y="638">Core is MIT and never fabricates or reclassifies trips. AI / trip-transforming logic lives only in separate private plugin packages.</text>
+  <text class="note" x="40" y="662">Stack: Python · FastAPI · openpyxl · WhatsApp Cloud API · Cloudflare Tunnel · systemd on Raspberry Pi.</text>
+</svg>
