@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 from typing import Optional
 
 import httpx
+
+log = logging.getLogger("rittenregistratie.whatsapp")
 
 GRAPH_URL = "https://graph.facebook.com/v21.0"
 
@@ -81,18 +84,35 @@ def reverse_geocode(lat, lon, api_key: str = "") -> str:
 
 async def send_message(
     token: str, phone_number_id: str, to: str, text: str
-) -> None:
+) -> bool:
+    """Send a WhatsApp text reply. Returns True on success, False otherwise.
+
+    Delivery failures (e.g. Meta error 131037 display-name approval, or the
+    recipient not being on a test number's allow-list) are logged so they are
+    visible in the service journal instead of failing silently.
+    """
     if not token or not phone_number_id:
-        return
+        return False
     url = f"{GRAPH_URL}/{phone_number_id}/messages"
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        await client.post(
-            url,
-            headers={"Authorization": f"Bearer {token}"},
-            json={
-                "messaging_product": "whatsapp",
-                "to": to,
-                "type": "text",
-                "text": {"body": text},
-            },
-        )
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+                json={
+                    "messaging_product": "whatsapp",
+                    "to": to,
+                    "type": "text",
+                    "text": {"body": text},
+                },
+            )
+        if resp.status_code >= 400:
+            log.warning(
+                "WhatsApp reply to %s failed (%s): %s",
+                to, resp.status_code, resp.text,
+            )
+            return False
+        return True
+    except httpx.HTTPError as exc:
+        log.warning("WhatsApp reply to %s errored: %s", to, exc)
+        return False

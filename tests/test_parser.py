@@ -36,3 +36,16 @@ def test_missing_odo():
 def test_empty():
     with pytest.raises(ParseError):
         parse_message("   ")
+
+
+def test_private_in_parens_cleaned():
+    m = parse_message("18832 home (private)")
+    assert m.destination == "home"
+    assert m.is_private
+    assert m.note == ""
+
+
+def test_empty_parens_removed():
+    m = parse_message("18832 Office ()")
+    assert m.destination == "Office"
+    assert not m.is_private
