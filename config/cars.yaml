@@ -1,0 +1,10 @@
+default_car:
+  label: "Company car"
+  seed_address: "Home"
+  seed_odometer: 145000
+  phones: ["31612345678"]
+van:
+  label: "Delivery van"
+  seed_address: "Depot"
+  seed_odometer: 302000
+  phones: ["31698765432"]

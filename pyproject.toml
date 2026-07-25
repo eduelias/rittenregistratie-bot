@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rittenregistratie"
+version = "0.1.0"
+description = "Belastingdienst-compliant WhatsApp trip logger (rittenregistratie) with a plugin system."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "httpx>=0.27",
+    "openpyxl>=3.1",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+# Safe default plugin implementations shipped with the core.
+# Third-party / private packages register their own implementations under
+# these same entry-point groups to override or extend behaviour.
+[project.entry-points."rittenregistratie.odometer"]
+whatsapp_manual = "rittenregistratie.plugins.odometer_whatsapp:WhatsAppManualSource"
+mercedes_stub = "rittenregistratie.plugins.odometer_mercedes_stub:MercedesStubSource"
+
+[project.entry-points."rittenregistratie.trajectory"]
+google = "rittenregistratie.plugins.trajectory_google:GoogleDirectionsProvider"
+maps_link = "rittenregistratie.plugins.trajectory_link:MapsLinkProvider"
+manual = "rittenregistratie.plugins.trajectory_manual:ManualProvider"
+
+[project.entry-points."rittenregistratie.delta"]
+noop = "rittenregistratie.plugins.delta_noop:NoopAllocator"
+
+[project.entry-points."rittenregistratie.privatecap"]
+warn = "rittenregistratie.plugins.privatecap_warn:WarnPlugin"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"

@@ -1,0 +1,18 @@
+[Unit]
+Description=rittenregistratie WhatsApp trip logger
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust User and paths to your setup.
+User=pi
+WorkingDirectory=/home/pi/reps/du7/trip-logger/rittenregistratie-bot
+Environment=PATH=/home/pi/reps/du7/trip-logger/rittenregistratie-bot/.venv/bin
+ExecStart=/home/pi/reps/du7/trip-logger/rittenregistratie-bot/.venv/bin/uvicorn \
+    rittenregistratie.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

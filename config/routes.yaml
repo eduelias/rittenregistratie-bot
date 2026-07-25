@@ -1,0 +1,6 @@
+Home->Office:
+  expected_km: 40
+  variants: [38, 40, 43]
+Office->Home:
+  expected_km: 40
+  variants: [38, 40, 43]
