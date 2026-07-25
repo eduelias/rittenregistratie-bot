@@ -54,3 +54,20 @@ def test_ping_case_insensitive(client):
 
 def test_health(client):
     assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_extract_statuses():
+    from rittenregistratie.whatsapp import extract_statuses
+    body = {"entry": [{"changes": [{"value": {"statuses": [
+        {"id": "wamid.X", "status": "delivered", "recipient_id": "31612345678"},
+        {"id": "wamid.Y", "status": "failed", "recipient_id": "31612345678",
+         "errors": [{"title": "Undeliverable"}]},
+    ]}}]}]}
+    out = extract_statuses(body)
+    assert out[0]["status"] == "delivered"
+    assert out[1]["status"] == "failed" and out[1]["error"] == "Undeliverable"
+
+
+def test_extract_statuses_empty():
+    from rittenregistratie.whatsapp import extract_statuses
+    assert extract_statuses({"entry": [{"changes": [{"value": {}}]}]}) == []

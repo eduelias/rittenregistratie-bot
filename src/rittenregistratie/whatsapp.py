@@ -59,6 +59,29 @@ def extract_message(body: dict) -> Optional[dict]:
         return None
 
 
+def extract_statuses(body: dict) -> list:
+    """Return delivery/read/failed status events from a webhook payload.
+
+    Present when the WABA is subscribed to the ``statuses`` field. Returns a list
+    of dicts with ``id``, ``status`` (sent/delivered/read/failed), ``recipient``
+    and optional ``error``. Empty list when there are no statuses.
+    """
+    out = []
+    try:
+        change = body["entry"][0]["changes"][0]["value"]
+        for s in change.get("statuses", []) or []:
+            errs = s.get("errors") or []
+            out.append({
+                "id": s.get("id"),
+                "status": s.get("status"),
+                "recipient": s.get("recipient_id"),
+                "error": (errs[0].get("title") if errs else None),
+            })
+    except (KeyError, IndexError, TypeError):
+        pass
+    return out
+
+
 def reverse_geocode(lat, lon, api_key: str = "") -> str:
     """Reverse-geocode a lat/lon into a human address via Google (best effort).
 

@@ -76,6 +76,20 @@ async def webhook(request: Request) -> Response:
         return Response(status_code=403, content="Bad signature")
 
     body = await request.json()
+
+    # Log delivery/read/failed status receipts (when subscribed to 'statuses').
+    for st in whatsapp.extract_statuses(body):
+        if st.get("error"):
+            log.warning(
+                "Message %s to %s: %s (%s)",
+                st.get("id"), st.get("recipient"), st.get("status"), st["error"],
+            )
+        else:
+            log.info(
+                "Message %s to %s: %s",
+                st.get("id"), st.get("recipient"), st.get("status"),
+            )
+
     msg = whatsapp.extract_message(body)
     # Always 200 quickly so Meta does not retry.
     if not msg or not msg.get("from"):
