@@ -105,13 +105,19 @@ class Engine:
         from .cars import normalize_phone
         return normalize_phone(sender) in self.settings.admin_list()
 
+    def _uses_override(self, car: Car) -> bool:
+        """True if this car uses the override private-cap plugin (which may edit
+        the generated spreadsheet)."""
+        if self.cap_plugin_override is None:
+            return False
+        allow = set(self.settings.cap_override_list())
+        return bool(allow and any(p in allow for p in car.phones))
+
     def _cap_for_car(self, car: Car):
         """Return the private-cap plugin for a car: the override plugin if any of
         the car's numbers is allow-listed, else the default cap plugin."""
-        if self.cap_plugin_override is not None:
-            allow = set(self.settings.cap_override_list())
-            if allow and any(p in allow for p in car.phones):
-                return self.cap_plugin_override
+        if self._uses_override(car):
+            return self.cap_plugin_override
         return self.cap_plugin
 
     def register_join_request(self, sender: str, first_message: str) -> bool:
@@ -254,6 +260,7 @@ class Engine:
                 "destination": parsed.destination,
                 "is_private": parsed.is_private,
                 "note": parsed.note,
+                "raw": parsed.raw,
             }
             store.save(state)
             return (
@@ -267,6 +274,8 @@ class Engine:
             end_odo=parsed.end_odo,
             destination=parsed.destination,
             is_private=parsed.is_private,
+            note=parsed.note,
+            raw_message=parsed.raw,
         )
 
     def handle_location(
@@ -322,12 +331,14 @@ class Engine:
             destination=destination,
             is_private=pending.get("is_private", False),
             learned=address,
+            note=pending.get("note", ""),
+            raw_message=pending.get("raw", ""),
         )
 
     def _commit_trip(
         self, car: Car, store: StateStore, state: State, now: datetime,
         *, end_odo: int, destination: str, is_private: bool,
-        learned: str = "",
+        learned: str = "", note: str = "", raw_message: str = "",
     ) -> str:
         excel = ExcelWriter(self.excel_dir, car.car_id)
 
@@ -369,6 +380,23 @@ class Engine:
             source=TripSource.WHATSAPP,
         )
         excel.append_trip(trip)
+
+        # Keep an immutable, append-only record of every trip exactly as
+        # reported by the user, so the pristine data is always preserved and the
+        # spreadsheet can be rebuilt from it at any time. This ledger is never
+        # modified after writing.
+        from .raw_ledger import RawLedger, RawTrip
+        RawLedger(self.settings.raw_ledger_file(car.car_id)).append(RawTrip(
+            timestamp=now.isoformat(timespec="seconds"),
+            start_odo=start_odo,
+            end_odo=end_odo,
+            start_address=start_address,
+            end_address=end_address,
+            destination_raw=destination,
+            is_private=is_private,
+            note=note,
+            raw_message=raw_message,
+        ))
 
         state.last_odometer = end_odo
         state.last_address = destination

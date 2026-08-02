@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     def state_file(self, car_id: str) -> Path:
         return self.data_dir / f"state-{car_id}.json"
 
+    def raw_ledger_file(self, car_id: str) -> Path:
+        return self.data_dir / f"raw-ledger-{car_id}.jsonl"
+
     @property
     def onboarding_file(self) -> Path:
         return self.data_dir / "onboarding.json"
