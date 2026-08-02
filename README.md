@@ -113,18 +113,22 @@ keeps their existing trip logs on disk.
 
 Set `RIT_ONBOARDING_ENABLED=false` to silently ignore unregistered numbers.
 
-## Excel schema (audit fields)
+## Excel schema (exactly the Belastingdienst per-trip fields)
+
+Each trip is one row with exactly the fields the Belastingdienst requires —
+nothing more, nothing less:
 
 ```
-Date | Time | Type | StartAddress | EndAddress | StartOdo | EndOdo |
-TripKm | Route | DeviationNote | Source | PrivateKmYTD
+Datum | Beginstand | Eindstand | Vertrekadres | Aankomstadres |
+Route | Privé/zakelijk | Privé-omrijkilometers
 ```
 
-One file per car per year: `trips-<car>-<year>.xlsx`.
+- **Route** is filled *only* when the driven route is not the most usual one
+  (empty otherwise), as the rules specify.
+- A there-and-back visit is recorded as **2 trips** (two rows).
 
-These map to the mandatory Belastingdienst fields: date, begin/end odometer,
-begin/end address, the driven route (with a note when it deviates from the usual
-route), and the business/private character. See `docs/belastingdienst.md`.
+One file per car per year: `trips-<car>-<year>.xlsx`. See
+`docs/belastingdienst.md`.
 
 ## Plugin system
 

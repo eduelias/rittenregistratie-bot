@@ -338,15 +338,18 @@ class Engine:
         start_address = self.routebook.address_for(origin_name)
         end_address = self.routebook.address_for(destination)
 
+        # Route is recorded ONLY when the driven route is not the most usual one
+        # (Belastingdienst: "de route die u hebt gereden, als u niet de meest
+        # gebruikelijke route hebt genomen"). We treat a distance that differs
+        # from the known route as "not the usual route" and record the actually
+        # driven route from the trajectory provider.
         route_info = self.routebook.lookup(origin_name, destination)
-        traj = self.trajectory.get_trajectory(start_address, end_address)
-        route_str = traj.summary + (f" ({traj.url})" if traj.url else "")
-
-        deviation_note = ""
+        route_str = ""
         if route_info is not None:
             expected = route_info.nearest_variant(trip_km)
             if trip_km != expected:
-                deviation_note = f"Actual {trip_km} km vs expected {expected} km."
+                traj = self.trajectory.get_trajectory(start_address, end_address)
+                route_str = traj.summary or ""
 
         trip_type = TripType.PRIVATE if is_private else TripType.BUSINESS
 
@@ -362,9 +365,8 @@ class Engine:
             start_odo=start_odo,
             end_odo=end_odo,
             route=route_str,
-            deviation_note=deviation_note,
+            private_detour_km=0,
             source=TripSource.WHATSAPP,
-            private_km_ytd=private_ytd,
         )
         excel.append_trip(trip)
 
@@ -384,8 +386,8 @@ class Engine:
         ]
         if learned:
             lines.append(f"Saved address for '{destination}': {learned}")
-        if deviation_note:
-            lines.append(deviation_note)
+        if route_str:
+            lines.append(f"Route recorded (deviation): {route_str}")
         if cap and cap.message:
             lines.append(cap.message)
         return "\n".join(lines)

@@ -43,15 +43,15 @@ def test_first_trip_uses_seed(settings):
     assert "business" in reply
     wb = load_workbook(settings.data_dir / "trips-default_car-2026.xlsx")
     rows = list(wb.active.iter_rows(values_only=True))
-    assert rows[0][0] == "Date"
-    assert rows[1][5] == 145000  # StartOdo == seed
-    assert rows[1][6] == 145040  # EndOdo
+    assert rows[0][0] == "Datum"
+    assert rows[1][1] == 145000  # Beginstand == seed
+    assert rows[1][2] == 145040  # Eindstand
 
 
 def test_deviation_detected(settings):
     eng = Engine(settings)
     reply = eng.handle_text("145050 Office", "31612345678", now=datetime(2026, 1, 5, 9, 0))
-    assert "expected" in reply.lower()
+    assert "deviation" in reply.lower() or "route" in reply.lower()
 
 
 def test_monotonic_enforced(settings):
@@ -91,7 +91,7 @@ def test_unknown_destination_resolved_by_text(settings):
     assert "Sportlaan 1" in reply
     wb = load_workbook(settings.data_dir / "trips-default_car-2026.xlsx")
     rows = list(wb.active.iter_rows(values_only=True))
-    assert rows[-1][4] == "Sportlaan 1, Almere"  # EndAddress
+    assert rows[-1][4] == "Sportlaan 1, Almere"  # Aankomstadres
     # location learned for next time
     reply2 = eng.handle_text("145090 Gym", "31612345678", now=datetime(2026, 1, 6, 9, 0))
     assert "don't have an address" not in reply2.lower()

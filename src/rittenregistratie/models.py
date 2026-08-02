@@ -59,9 +59,8 @@ class Trip:
     start_odo: int
     end_odo: int
     route: str = ""
-    deviation_note: str = ""
+    private_detour_km: int = 0
     source: TripSource = TripSource.WHATSAPP
-    private_km_ytd: int = 0
 
     @property
     def trip_km(self) -> int:
