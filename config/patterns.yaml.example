@@ -1,8 +1,7 @@
-# Optional plausibility patterns for generated (redistributed) trips.
-# Place this in the bot's config/ directory to tune how the reallocation plugin
-# schedules the business/private trips it generates.
+# Plausibility patterns for generated (redistributed) trips.
+# Used by the reallocation plugin to schedule generated business/private trips.
 
-# Working days for business trips (0=Mon ... 6=Sun). Default: Mon-Fri.
+# Working days for business trips (0=Mon ... 6=Sun).
 working_days: [0, 1, 2, 3, 4]
 
 # Business trips are timestamped within this hour window.
@@ -11,9 +10,29 @@ business_hours: [8, 18]
 # Private (kept-km) trips are timestamped in the evening.
 private_hours: [18, 22]
 
-# Dates to avoid for business trips (national holidays, vacations, etc.).
+# Dutch national holidays 2026 and 2027 — business trips avoid these dates.
 holidays:
-  - 2026-01-01
+  # --- 2026 ---
+  - 2026-01-01   # Nieuwjaarsdag
+  - 2026-04-03   # Goede Vrijdag
+  - 2026-04-05   # Eerste Paasdag
+  - 2026-04-06   # Tweede Paasdag
   - 2026-04-27   # Koningsdag
-  - 2026-12-25
-  - 2026-12-26
+  - 2026-05-05   # Bevrijdingsdag
+  - 2026-05-14   # Hemelvaartsdag
+  - 2026-05-24   # Eerste Pinksterdag
+  - 2026-05-25   # Tweede Pinksterdag
+  - 2026-12-25   # Eerste Kerstdag
+  - 2026-12-26   # Tweede Kerstdag
+  # --- 2027 ---
+  - 2027-01-01   # Nieuwjaarsdag
+  - 2027-03-26   # Goede Vrijdag
+  - 2027-03-28   # Eerste Paasdag
+  - 2027-03-29   # Tweede Paasdag
+  - 2027-04-27   # Koningsdag
+  - 2027-05-05   # Bevrijdingsdag
+  - 2027-05-06   # Hemelvaartsdag
+  - 2027-05-16   # Eerste Pinksterdag
+  - 2027-05-17   # Tweede Pinksterdag
+  - 2027-12-25   # Eerste Kerstdag
+  - 2027-12-26   # Tweede Kerstdag
