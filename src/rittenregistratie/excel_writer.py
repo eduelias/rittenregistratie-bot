@@ -1,8 +1,19 @@
-"""Per-year Excel writer with a Belastingdienst-compliant schema.
+"""Per-year Excel writer — strictly the Belastingdienst per-trip fields.
 
-Columns capture the mandatory 'sluitende rittenregistratie' fields:
-date, begin/end odometer, begin/end address, the driven route (plus a note when
-it deviates from the usual route) and the business/private character.
+Per the official rittenregistratie requirements, each trip row contains exactly
+these fields (and nothing else):
+
+- Datum — date
+- Beginstand — begin odometer
+- Eindstand — end odometer
+- Vertrekadres — departure address
+- Aankomstadres — arrival address
+- Route — the driven route, only when it is not the most usual route
+- Privé/zakelijk — private or business
+- Privé-omrijkilometers — private detour km when a trip mixes business and
+  private kilometres
+
+No other per-trip columns are added.
 """
 from __future__ import annotations
 
@@ -12,22 +23,22 @@ from typing import List
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
-from .models import Trip
+from .models import Trip, TripType
 
 HEADERS: List[str] = [
-    "Date",
-    "Time",
-    "Type",
-    "StartAddress",
-    "EndAddress",
-    "StartOdo",
-    "EndOdo",
-    "TripKm",
+    "Datum",
+    "Beginstand",
+    "Eindstand",
+    "Vertrekadres",
+    "Aankomstadres",
     "Route",
-    "DeviationNote",
-    "Source",
-    "PrivateKmYTD",
+    "Privé/zakelijk",
+    "Privé-omrijkilometers",
 ]
+
+
+def _pb(t: TripType) -> str:
+    return "privé" if t is TripType.PRIVATE else "zakelijk"
 
 
 class ExcelWriter:
@@ -57,17 +68,13 @@ class ExcelWriter:
         ws.append(
             [
                 trip.date.strftime("%Y-%m-%d"),
-                trip.date.strftime("%H:%M"),
-                trip.trip_type.value,
-                trip.start_address,
-                trip.end_address,
                 trip.start_odo,
                 trip.end_odo,
-                trip.trip_km,
-                trip.route,
-                trip.deviation_note,
-                trip.source.value,
-                trip.private_km_ytd,
+                trip.start_address,
+                trip.end_address,
+                trip.route,  # only populated when the usual route was not taken
+                _pb(trip.trip_type),
+                trip.private_detour_km or "",
             ]
         )
         wb.save(path)
