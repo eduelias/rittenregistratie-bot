@@ -1,0 +1,19 @@
+# Optional plausibility patterns for generated (redistributed) trips.
+# Place this in the bot's config/ directory to tune how the reallocation plugin
+# schedules the business/private trips it generates.
+
+# Working days for business trips (0=Mon ... 6=Sun). Default: Mon-Fri.
+working_days: [0, 1, 2, 3, 4]
+
+# Business trips are timestamped within this hour window.
+business_hours: [8, 18]
+
+# Private (kept-km) trips are timestamped in the evening.
+private_hours: [18, 22]
+
+# Dates to avoid for business trips (national holidays, vacations, etc.).
+holidays:
+  - 2026-01-01
+  - 2026-04-27   # Koningsdag
+  - 2026-12-25
+  - 2026-12-26
