@@ -83,3 +83,41 @@ def test_approve_rejects_duplicate_phone(settings):
         "approve", ["31600000001", "Dup", "500"]
     )
     assert "already registered" in reply.lower()
+
+
+def test_list_users(settings):
+    eng = Engine(settings)
+    reply = eng.handle_admin_command("list", [])
+    assert "Mine" in reply
+    assert "1/5" in reply
+
+
+def test_remove_user(settings):
+    eng = Engine(settings)
+    eng.handle_admin_command("approve", ["31612345678", "Alice", "45000"])
+    assert eng.cars.resolve("31612345678") is not None
+    reply = eng.handle_admin_command("remove", ["31612345678"])
+    assert "Removed" in reply
+    assert eng.cars.resolve("31612345678") is None
+
+
+def test_remove_by_car_id(settings):
+    eng = Engine(settings)
+    reply = eng.handle_admin_command("remove", ["mycar"])
+    assert "Removed" in reply
+    assert eng.cars.resolve("31600000001") is None
+
+
+def test_remove_unknown(settings):
+    eng = Engine(settings)
+    reply = eng.handle_admin_command("remove", ["31699999999"])
+    assert "No user found" in reply
+
+
+def test_max_users_enforced(settings):
+    settings.max_users = 2  # mycar already exists (1)
+    eng = Engine(settings)
+    r1 = eng.handle_admin_command("approve", ["31600000002", "Bob", "100"])
+    assert r1.startswith("Approved")
+    r2 = eng.handle_admin_command("approve", ["31600000003", "Carol", "100"])
+    assert "limit reached" in r2.lower()

@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     admin_numbers: str = ""
     # Allow unregistered numbers to request onboarding (else silently ignored).
     onboarding_enabled: bool = True
+    # Maximum number of registered users/cars allowed.
+    max_users: int = 5
 
     # Trajectory
     google_maps_api_key: str = ""

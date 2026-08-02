@@ -97,6 +97,8 @@ needed.
    pending                                   # list join requests
    approve <number> <label> <seed_odo> [address]   # register a new user/car
    deny <number>                             # reject a request
+   list                                      # list registered users
+   remove <number|car_id>                    # remove a user
    help                                      # show admin commands
    ```
 
@@ -104,6 +106,10 @@ needed.
 
 3. The bot registers the number as a new car in `cars.yaml`, seeds its odometer,
    and **welcomes the new user**. They can start logging trips immediately.
+
+Each user has their **own spreadsheet** (`trips-<car_id>-<year>.xlsx`) and state.
+The number of users is capped by `RIT_MAX_USERS` (default 5). Removing a user
+keeps their existing trip logs on disk.
 
 Set `RIT_ONBOARDING_ENABLED=false` to silently ignore unregistered numbers.
 

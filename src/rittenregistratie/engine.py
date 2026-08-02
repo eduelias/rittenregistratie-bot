@@ -105,14 +105,38 @@ class Engine:
 
     def handle_admin_command(self, cmd: str, args: list) -> str:
         """Process an admin onboarding command; returns a reply for the admin."""
-        from .cars import add_car_to_yaml, normalize_phone, slugify_car_id
+        from .cars import (
+            add_car_to_yaml, normalize_phone, remove_car_from_yaml, slugify_car_id,
+        )
 
         if cmd == "help":
             return (
                 "Admin commands:\n"
                 "pending — list join requests\n"
                 "approve <number> <label> <seed_odo> [address...] — add a user\n"
-                "deny <number> — reject a request"
+                "deny <number> — reject a request\n"
+                "list — list registered users\n"
+                "remove <number|car_id> — remove a user"
+            )
+        if cmd == "list":
+            cars = self.cars._cars
+            lines = [f"Registered users ({len(cars)}/{self.settings.max_users}):"]
+            for cid, car in cars.items():
+                lines.append(
+                    f"- {car.label} [{cid}] {', '.join(car.phones)} "
+                    f"(seed {car.seed_odometer} km)"
+                )
+            return "\n".join(lines)
+        if cmd == "remove":
+            if not args:
+                return "Usage: remove <number|car_id>"
+            removed = remove_car_from_yaml(self.settings.cars_file, args[0])
+            if not removed:
+                return f"No user found for '{args[0]}'."
+            self.reload_cars()
+            return (
+                f"Removed user '{removed}'. Their trip logs and state files are "
+                f"kept on disk (trips-{removed}-*.xlsx, state-{removed}.json)."
             )
         if cmd == "pending":
             reqs = self.onboarding.list()
@@ -145,6 +169,12 @@ class Engine:
             if seed_odo is None:
                 return "Could not find the seed odometer (a number). " \
                        "Usage: approve <number> <label> <seed_odo> [address]"
+            if len(self.cars._cars) >= self.settings.max_users:
+                return (
+                    f"User limit reached ({self.settings.max_users}). "
+                    f"Remove a user first (remove <number>) or raise "
+                    f"RIT_MAX_USERS."
+                )
             existing = list(self.cars._cars.keys())
             car_id = slugify_car_id(label, existing)
             try:

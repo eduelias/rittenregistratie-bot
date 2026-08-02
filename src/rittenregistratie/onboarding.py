@@ -88,6 +88,6 @@ def parse_admin_command(text: str) -> tuple[str, list[str]]:
     if not parts:
         return "", []
     cmd = parts[0].lower().lstrip("/")
-    if cmd in ("approve", "deny", "pending", "help"):
+    if cmd in ("approve", "deny", "pending", "help", "list", "remove"):
         return cmd, parts[1:]
     return "", []
