@@ -3,9 +3,10 @@
 Multi-car aware: the sender's phone number selects the car, and each car has its
 own state file, Excel logs and seed origin/odometer.
 
-This module contains no AI and never fabricates or reclassifies trips. It only
-*invokes* the configured DeltaAllocator and PrivateCapPlugin, whose default
-implementations are inert.
+This module contains no AI and never fabricates, invents, or reclassifies
+trips. The distance recorded for each trip is always the real odometer
+difference reported by the user. It only *invokes* the configured
+PrivateCapPlugin, whose default only reports a message.
 """
 from __future__ import annotations
 
@@ -61,7 +62,6 @@ class Engine:
         self.trajectory = self._instantiate_trajectory(
             traj_cls, settings.google_maps_api_key
         )
-        self.allocator = registry.get_delta_allocator(settings.delta_allocator)()
         self.cap_plugin = registry.get_private_cap_plugin(
             settings.private_cap_plugin
         )()
@@ -343,20 +343,16 @@ class Engine:
         route_str = traj.summary + (f" ({traj.url})" if traj.url else "")
 
         deviation_note = ""
-        delta = 0
         if route_info is not None:
             expected = route_info.nearest_variant(trip_km)
             if trip_km != expected:
                 deviation_note = f"Actual {trip_km} km vs expected {expected} km."
-            delta = max(0, trip_km - expected)
 
         trip_type = TripType.PRIVATE if is_private else TripType.BUSINESS
 
         private_ytd = state.private_ytd(now.year)
         if trip_type is TripType.PRIVATE:
             private_ytd = state.add_private(now.year, trip_km)
-        if delta:
-            state.add_delta(now.year, delta)
 
         trip = Trip(
             date=now,

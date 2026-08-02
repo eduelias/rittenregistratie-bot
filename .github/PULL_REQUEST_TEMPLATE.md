@@ -16,8 +16,8 @@
 - [ ] Tests added/updated and `pytest -q` passes locally
 - [ ] Docs updated if behaviour changed
 - [ ] No secrets (tokens, app secrets, phone numbers) added
-- [ ] Change respects the core principle: the open-source core does **not**
-      fabricate, invent, or reclassify trips (such logic goes in a plugin)
+- [ ] Change respects the core principle: the open-source core is a faithful
+      recorder and does **not** fabricate, invent, or reclassify trips
 
 ## Related issues
 

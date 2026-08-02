@@ -98,17 +98,12 @@
     <g transform="translate(20,128)">
       <rect width="450" height="70" rx="10" fill="#ffffff" stroke="#E0A800"/>
       <text class="plug" x="14" y="26">rittenregistratie.trajectory</text>
-      <text class="sub" x="14" y="48">maps_link · google · google_route (private)</text>
+      <text class="sub" x="14" y="48">maps_link · google (route lookup)</text>
     </g>
     <g transform="translate(20,208)">
       <rect width="450" height="70" rx="10" fill="#ffffff" stroke="#E0A800"/>
-      <text class="plug" x="14" y="26">rittenregistratie.delta</text>
-      <text class="sub" x="14" y="48">noop (core) · rule / llm (private)</text>
-    </g>
-    <g transform="translate(20,288)">
-      <rect width="450" height="70" rx="10" fill="#ffffff" stroke="#E0A800"/>
       <text class="plug" x="14" y="26">rittenregistratie.privatecap</text>
-      <text class="sub" x="14" y="48">warn (core) · reallocate (private)</text>
+      <text class="sub" x="14" y="48">warn — reports private km vs. the 500 km cap</text>
     </g>
   </g>
 
@@ -127,6 +122,6 @@
     <text class="note" x="330" y="222">reply (pong / trip summary)</text>
   </g>
 
-  <text class="note" x="40" y="638">Core is MIT and never fabricates or reclassifies trips. AI / trip-transforming logic lives only in separate private plugin packages.</text>
+  <text class="note" x="40" y="638">MIT core: a faithful recorder. It stores each trip exactly as reported (real odometer difference) and never fabricates or reclassifies trips.</text>
   <text class="note" x="40" y="662">Stack: Python · FastAPI · openpyxl · WhatsApp Cloud API · Cloudflare Tunnel · systemd on Raspberry Pi.</text>
 </svg>

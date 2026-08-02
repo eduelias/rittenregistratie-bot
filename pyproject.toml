@@ -34,9 +34,6 @@ google = "rittenregistratie.plugins.trajectory_google:GoogleDirectionsProvider"
 maps_link = "rittenregistratie.plugins.trajectory_link:MapsLinkProvider"
 manual = "rittenregistratie.plugins.trajectory_manual:ManualProvider"
 
-[project.entry-points."rittenregistratie.delta"]
-noop = "rittenregistratie.plugins.delta_noop:NoopAllocator"
-
 [project.entry-points."rittenregistratie.privatecap"]
 warn = "rittenregistratie.plugins.privatecap_warn:WarnPlugin"
 

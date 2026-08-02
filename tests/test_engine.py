@@ -30,7 +30,7 @@ def settings(tmp_path: Path) -> Settings:
         seed_address="Home",
         seed_odometer=145000,
         trajectory_provider="maps_link",
-        delta_allocator="noop",
+        
         private_cap_plugin="warn",
         whatsapp_app_secret="",
     )

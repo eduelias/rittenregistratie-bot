@@ -17,7 +17,6 @@ class State:
     last_address: str = ""
     # keyed by year (string) -> integer km
     private_km: Dict[str, int] = field(default_factory=dict)
-    delta_pool_km: Dict[str, int] = field(default_factory=dict)
     # a trip awaiting an address for an unknown, non-private destination
     pending: Optional[dict] = None
 
@@ -29,11 +28,6 @@ class State:
         self.private_km[y] = self.private_km.get(y, 0) + km
         return self.private_km[y]
 
-    def add_delta(self, year: int, km: int) -> int:
-        y = str(year)
-        self.delta_pool_km[y] = self.delta_pool_km.get(y, 0) + km
-        return self.delta_pool_km[y]
-
 
 class StateStore:
     def __init__(self, path: Path):
@@ -43,6 +37,9 @@ class StateStore:
         if not self.path.exists():
             return State()
         data = json.loads(self.path.read_text(encoding="utf-8"))
+        # Tolerate keys from older versions that are no longer part of State.
+        known = State.__dataclass_fields__.keys()
+        data = {k: v for k, v in data.items() if k in known}
         return State(**data)
 
     def save(self, state: State) -> None:
