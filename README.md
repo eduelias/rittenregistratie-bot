@@ -130,6 +130,18 @@ Route | Privé/zakelijk | Privé-omrijkilometers
 One file per car per year: `trips-<car>-<year>.xlsx`. See
 `docs/belastingdienst.md`.
 
+## Immutable raw ledger
+
+Every trip is also appended, exactly as you reported it, to an **append-only**
+ledger at `data/raw-ledger-<car>.jsonl` (one JSON object per line). This ledger
+is never modified after writing and is the pristine source of truth.
+
+Rebuild the compliant spreadsheet from it at any time:
+
+```bash
+python -m rittenregistratie.rebuild <car_id> [--out ./restore]
+```
+
 ## Plugin system
 
 Four extension points are discovered via setuptools entry points, so other
