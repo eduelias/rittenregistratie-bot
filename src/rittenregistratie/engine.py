@@ -374,8 +374,21 @@ class Engine:
         state.last_address = destination
 
         cap = self._cap_for_car(car).on_evaluate(
-            now.year, private_ytd, self.settings.private_cap_km, [trip]
+            now.year, private_ytd, self.settings.private_cap_km, [trip],
+            context={
+                "data_dir": self.settings.data_dir,
+                "car_id": car.car_id,
+                "year": now.year,
+            },
         )
+        # A plugin may report km it moved out of the private total (e.g. a
+        # private-repo plugin that edits the records). Apply it to the counter so
+        # the state stays consistent with what the plugin wrote.
+        converted = getattr(cap, "converted_km", 0)
+        if converted:
+            state.private_km[str(now.year)] = max(
+                0, state.private_ytd(now.year) - converted
+            )
 
         store.save(state)
 

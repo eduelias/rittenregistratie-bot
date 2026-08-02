@@ -17,6 +17,7 @@ class WarnPlugin(PrivateCapPlugin):
         private_total_km: int,
         cap_km: int,
         trips: List[Trip],
+        context: dict | None = None,
     ) -> CapAction:
         if private_total_km > cap_km:
             over = private_total_km - cap_km
