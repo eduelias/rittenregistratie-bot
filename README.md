@@ -143,6 +143,20 @@ The shipped defaults are **inert and safe**: `noop` never generates trips and
 reallocation are intentionally **not** part of this open-source core; they live
 in separate plugin packages.
 
+### Per-user private-cap plugin
+
+By default one private-cap plugin applies to everyone. You can apply a
+**different** cap plugin to specific numbers only:
+
+```
+RIT_PRIVATE_CAP_PLUGIN=warn                 # default for everyone
+RIT_PRIVATE_CAP_PLUGIN_OVERRIDE=reallocate  # special plugin...
+RIT_PRIVATE_CAP_OVERRIDE_NUMBERS=31612345678,31698765432  # ...only for these
+```
+
+A car uses the override plugin if any of its numbers is on the list; all other
+cars keep the default. Leave the override empty to disable this.
+
 See `docs/plugins.md`.
 
 ## Architecture

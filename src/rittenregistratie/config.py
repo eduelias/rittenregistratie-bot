@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     trajectory_provider: str = "maps_link"
     delta_allocator: str = "noop"
     private_cap_plugin: str = "warn"
+    # Optional per-user override: numbers in private_cap_override_numbers use
+    # private_cap_plugin_override instead of the default cap plugin.
+    private_cap_plugin_override: str = ""
+    private_cap_override_numbers: str = ""
 
     # Compliance
     private_cap_km: int = 500
@@ -72,6 +76,14 @@ class Settings(BaseSettings):
     def admin_list(self) -> list[str]:
         import re
         return [re.sub(r"\D", "", n) for n in self.admin_numbers.split(",") if n.strip()]
+
+    def cap_override_list(self) -> list[str]:
+        import re
+        return [
+            re.sub(r"\D", "", n)
+            for n in self.private_cap_override_numbers.split(",")
+            if n.strip()
+        ]
 
 
 def load_yaml(path: Path) -> dict:

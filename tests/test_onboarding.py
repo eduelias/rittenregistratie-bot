@@ -121,3 +121,29 @@ def test_max_users_enforced(settings):
     assert r1.startswith("Approved")
     r2 = eng.handle_admin_command("approve", ["31600000003", "Carol", "100"])
     assert "limit reached" in r2.lower()
+
+
+def test_cap_override_only_for_allowlisted(settings, tmp_path):
+    # Register two cars: one allow-listed for the override, one not.
+    (settings.config_dir / "cars.yaml").write_text(
+        "vip:\n  label: VIP\n  seed_address: Home\n  seed_odometer: 100\n"
+        "  phones: ['31600000001']\n"
+        "other:\n  label: Other\n  seed_address: Home\n  seed_odometer: 100\n"
+        "  phones: ['31600000002']\n"
+    )
+    settings.private_cap_plugin = "warn"
+    settings.private_cap_plugin_override = "warn"  # any registered plugin
+    settings.private_cap_override_numbers = "31600000001"
+    eng = Engine(settings)
+
+    vip = eng.cars.resolve("31600000001")
+    other = eng.cars.resolve("31600000002")
+    # VIP gets the override instance; other gets the default instance
+    assert eng._cap_for_car(vip) is eng.cap_plugin_override
+    assert eng._cap_for_car(other) is eng.cap_plugin
+
+
+def test_no_override_configured_uses_default(settings):
+    eng = Engine(settings)  # no override set in fixture
+    car = eng.cars.resolve("31600000001")
+    assert eng._cap_for_car(car) is eng.cap_plugin
