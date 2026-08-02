@@ -185,10 +185,8 @@ async def _send_all(sender: str, reply: str, extra: list) -> None:
         sender, reply, graph_url=graph_url,
     )
     if not delivered:
-        log.warning(
-            "Reply not delivered to %s (see WhatsApp error above). Reply was: %s",
-            sender, reply.replace(chr(10), " | "),
-        )
+        # Privacy: do not write message/reply content to the journal.
+        log.warning("Reply not delivered to %s (see WhatsApp error above).", sender)
     for to, body in extra:
         await whatsapp.send_message(
             _settings.whatsapp_token, _settings.whatsapp_phone_number_id,
