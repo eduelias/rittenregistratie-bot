@@ -89,6 +89,29 @@ def add_car_to_yaml(
     )
 
 
+def remove_car_from_yaml(path: Path, identifier: str) -> Optional[str]:
+    """Remove a car by car_id or phone number. Returns the removed car_id."""
+    if not path.exists():
+        return None
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    phone = normalize_phone(identifier)
+    target = None
+    if identifier in data:
+        target = identifier
+    else:
+        for cid, val in data.items():
+            if phone and phone in [normalize_phone(p) for p in val.get("phones", [])]:
+                target = cid
+                break
+    if target is None:
+        return None
+    del data[target]
+    path.write_text(
+        yaml.safe_dump(data, sort_keys=True, allow_unicode=True), encoding="utf-8"
+    )
+    return target
+
+
 def slugify_car_id(label: str, existing: List[str]) -> str:
     """Make a unique, filesystem-safe car id from a label."""
     base = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_") or "car"
