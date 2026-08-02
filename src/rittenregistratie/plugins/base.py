@@ -42,5 +42,11 @@ class PrivateCapPlugin(ABC):
         private_total_km: int,
         cap_km: int,
         trips: List[Trip],
+        context: Optional[dict] = None,
     ) -> CapAction:
-        """Report on the current private total against the cap."""
+        """Report on the current private total against the cap.
+
+        ``context`` is an optional, neutral bag of runtime information (e.g.
+        data directory and car id) that a plugin *may* use. The core itself
+        never modifies recorded trips; it only records what the user reports.
+        """
