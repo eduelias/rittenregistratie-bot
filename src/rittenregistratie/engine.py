@@ -65,6 +65,12 @@ class Engine:
         self.cap_plugin = registry.get_private_cap_plugin(
             settings.private_cap_plugin
         )()
+        # Optional per-user override cap plugin (only for allow-listed numbers).
+        self.cap_plugin_override = None
+        if settings.private_cap_plugin_override:
+            self.cap_plugin_override = registry.get_private_cap_plugin(
+                settings.private_cap_plugin_override
+            )()
 
     @staticmethod
     def _instantiate_trajectory(traj_cls, api_key: str):
@@ -98,6 +104,15 @@ class Engine:
     def is_admin(self, sender: str) -> bool:
         from .cars import normalize_phone
         return normalize_phone(sender) in self.settings.admin_list()
+
+    def _cap_for_car(self, car: Car):
+        """Return the private-cap plugin for a car: the override plugin if any of
+        the car's numbers is allow-listed, else the default cap plugin."""
+        if self.cap_plugin_override is not None:
+            allow = set(self.settings.cap_override_list())
+            if allow and any(p in allow for p in car.phones):
+                return self.cap_plugin_override
+        return self.cap_plugin
 
     def register_join_request(self, sender: str, first_message: str) -> bool:
         """Record a pending join request. Returns True if newly added."""
@@ -360,7 +375,7 @@ class Engine:
         state.last_odometer = end_odo
         state.last_address = destination
 
-        cap = self.cap_plugin.on_evaluate(
+        cap = self._cap_for_car(car).on_evaluate(
             now.year, private_ytd, self.settings.private_cap_km, [trip]
         )
 
