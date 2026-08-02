@@ -377,6 +377,7 @@ class Engine:
             now.year, private_ytd, self.settings.private_cap_km, [trip],
             context={
                 "data_dir": self.settings.data_dir,
+                "config_dir": self.settings.config_dir,
                 "car_id": car.car_id,
                 "year": now.year,
             },
