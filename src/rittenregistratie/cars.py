@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional
+
+import yaml
 
 
 def normalize_phone(phone: str) -> str:
@@ -58,3 +61,40 @@ class CarRegistry:
 
     def is_empty(self) -> bool:
         return not self._cars
+
+
+def add_car_to_yaml(
+    path: Path, car_id: str, label: str, seed_address: str,
+    seed_odometer: int, phone: str,
+) -> None:
+    """Append a new car entry to a cars.yaml file (creating it if needed)."""
+    data = {}
+    if path.exists():
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if car_id in data:
+        raise ValueError(f"Car id '{car_id}' already exists.")
+    phone = normalize_phone(phone)
+    for cid, val in data.items():
+        if phone in [normalize_phone(p) for p in val.get("phones", [])]:
+            raise ValueError(f"Phone {phone} already registered to '{cid}'.")
+    data[car_id] = {
+        "label": label,
+        "seed_address": seed_address,
+        "seed_odometer": int(seed_odometer),
+        "phones": [phone],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        yaml.safe_dump(data, sort_keys=True, allow_unicode=True), encoding="utf-8"
+    )
+
+
+def slugify_car_id(label: str, existing: List[str]) -> str:
+    """Make a unique, filesystem-safe car id from a label."""
+    base = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_") or "car"
+    cid = base
+    i = 2
+    while cid in existing:
+        cid = f"{base}_{i}"
+        i += 1
+    return cid

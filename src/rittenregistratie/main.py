@@ -96,52 +96,101 @@ async def webhook(request: Request) -> Response:
         return Response(status_code=200, content="ok")
 
     sender = msg["from"]
-    # Authorisation is driven by the car registry: only numbers registered to a
-    # car are accepted. An optional extra allow-list can further restrict.
-    if _settings.allowed_sender and sender != _settings.allowed_sender:
-        log.warning("Ignoring message from non-allowed sender %s", sender)
-        return Response(status_code=200, content="ok")
-    if not _engine.cars.resolve(sender):
-        log.warning("Ignoring message from unregistered number %s", sender)
-        return Response(status_code=200, content="ok")
-
     location = msg.get("location")
     text = msg.get("text")
-    try:
-        if text and text.strip().lower() in ("ping", "/ping"):
-            # Simple connectivity check: no trip logged, no state touched.
-            reply = "pong"
-        elif location:
-            reply = _engine.handle_location(
-                sender,
-                location.get("latitude"),
-                location.get("longitude"),
-                location.get("address") or "",
-            )
-        elif text:
-            reply = _engine.handle_text(text, sender)
-        else:
-            reply = (
-                "Please send: <odometer> <destination> [private], "
-                "or share a location when asked."
-            )
-    except (ParseError, EngineError, UnknownCarError) as exc:
-        reply = f"Could not log trip: {exc}"
-    except Exception:  # pragma: no cover - defensive
-        log.exception("Unexpected error handling message")
-        reply = "Internal error while logging the trip."
 
+    # Extra reply recipients (e.g. notify admins of a new join request).
+    extra_notify: list[tuple[str, str]] = []
+
+    is_registered = bool(_engine.cars.resolve(sender))
+    is_admin = _engine.is_admin(sender)
+
+    # Admin onboarding commands (approve/deny/pending/help).
+    from .onboarding import parse_admin_command
+    admin_cmd, admin_args = parse_admin_command(text or "")
+
+    if is_admin and admin_cmd:
+        try:
+            reply = _engine.handle_admin_command(admin_cmd, admin_args)
+            # If a user was just approved, welcome them too.
+            if admin_cmd == "approve" and reply.startswith("Approved"):
+                approved = _engine.cars.resolve(admin_args[0]) if admin_args else None
+                if approved:
+                    extra_notify.append((
+                        _engine.cars.resolve(admin_args[0]).phones[0],
+                        "You're approved! Send '<odometer> <destination>' to log a "
+                        "trip, or 'ping' to test. First message sets your car's start.",
+                    ))
+        except Exception:  # pragma: no cover
+            log.exception("admin command failed")
+            reply = "Admin command failed."
+    elif not is_registered:
+        # Onboarding: record a join request and notify admins.
+        if not _settings.onboarding_enabled:
+            log.warning("Ignoring message from unregistered number %s", sender)
+            return Response(status_code=200, content="ok")
+        if _engine.onboarding.has(sender):
+            reply = "Your request to join is still pending admin approval. Hang tight!"
+        else:
+            _engine.register_join_request(sender, text or "(non-text message)")
+            reply = (
+                "Hi! This is RittenRegistratie-Bot. Your number isn't registered "
+                "yet. I've sent a join request to the admin — you'll get a message "
+                "when you're approved."
+            )
+            for admin in _settings.admin_list():
+                extra_notify.append((
+                    admin,
+                    f"New join request from {sender}: \"{(text or '')[:60]}\".\n"
+                    f"Approve: approve {sender} <label> <seed_odo> [address]\n"
+                    f"Or: deny {sender}",
+                ))
+        # send onboarding reply + notifications below
+        await _send_all(sender, reply, extra_notify)
+        return Response(status_code=200, content="ok")
+    else:
+        try:
+            if text and text.strip().lower() in ("ping", "/ping"):
+                # Simple connectivity check: no trip logged, no state touched.
+                reply = "pong"
+            elif location:
+                reply = _engine.handle_location(
+                    sender,
+                    location.get("latitude"),
+                    location.get("longitude"),
+                    location.get("address") or "",
+                )
+            elif text:
+                reply = _engine.handle_text(text, sender)
+            else:
+                reply = (
+                    "Please send: <odometer> <destination> [private], "
+                    "or share a location when asked."
+                )
+        except (ParseError, EngineError, UnknownCarError) as exc:
+            reply = f"Could not log trip: {exc}"
+        except Exception:  # pragma: no cover - defensive
+            log.exception("Unexpected error handling message")
+            reply = "Internal error while logging the trip."
+
+    await _send_all(sender, reply, extra_notify)
+    return Response(status_code=200, content="ok")
+
+
+async def _send_all(sender: str, reply: str, extra: list) -> None:
+    """Send the main reply plus any extra notifications."""
+    graph_url = f"https://graph.facebook.com/{_settings.whatsapp_graph_version}"
     delivered = await whatsapp.send_message(
-        _settings.whatsapp_token,
-        _settings.whatsapp_phone_number_id,
-        sender,
-        reply,
-        graph_url=f"https://graph.facebook.com/{_settings.whatsapp_graph_version}",
+        _settings.whatsapp_token, _settings.whatsapp_phone_number_id,
+        sender, reply, graph_url=graph_url,
     )
     if not delivered:
-        # Any trip was already logged; only the outbound reply failed.
         log.warning(
             "Reply not delivered to %s (see WhatsApp error above). Reply was: %s",
             sender, reply.replace(chr(10), " | "),
         )
-    return Response(status_code=200, content="ok")
+    for to, body in extra:
+        await whatsapp.send_message(
+            _settings.whatsapp_token, _settings.whatsapp_phone_number_id,
+            to, body, graph_url=graph_url,
+        )

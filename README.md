@@ -83,6 +83,30 @@ van:
   (`trips-<car>-<year>.xlsx`), keeping every administration separate.
 - A phone number may belong to exactly one car.
 
+## Onboarding new users
+
+New people can join by simply **messaging the bot**. Their request is queued for
+an **admin** (configured via `RIT_ADMIN_NUMBERS`) to approve — no config editing
+needed.
+
+1. A new number messages the bot → it replies that a request was sent, and
+   notifies the admin(s).
+2. An admin replies with WhatsApp commands:
+
+   ```
+   pending                                   # list join requests
+   approve <number> <label> <seed_odo> [address]   # register a new user/car
+   deny <number>                             # reject a request
+   help                                      # show admin commands
+   ```
+
+   e.g. `approve 31612345678 Alice Golf 45000 Delft`
+
+3. The bot registers the number as a new car in `cars.yaml`, seeds its odometer,
+   and **welcomes the new user**. They can start logging trips immediately.
+
+Set `RIT_ONBOARDING_ENABLED=false` to silently ignore unregistered numbers.
+
 ## Excel schema (audit fields)
 
 ```
