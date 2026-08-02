@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     whatsapp_verify_token: str = "changeme"
     whatsapp_graph_version: str = "v25.0"  # Meta Graph API version
     allowed_sender: str = ""  # E.164 without '+', e.g. 31612345678
+    # Admin numbers (comma-separated, E.164 without '+') who can approve joins.
+    admin_numbers: str = ""
+    # Allow unregistered numbers to request onboarding (else silently ignored).
+    onboarding_enabled: bool = True
 
     # Trajectory
     google_maps_api_key: str = ""
@@ -58,6 +62,14 @@ class Settings(BaseSettings):
 
     def state_file(self, car_id: str) -> Path:
         return self.data_dir / f"state-{car_id}.json"
+
+    @property
+    def onboarding_file(self) -> Path:
+        return self.data_dir / "onboarding.json"
+
+    def admin_list(self) -> list[str]:
+        import re
+        return [re.sub(r"\D", "", n) for n in self.admin_numbers.split(",") if n.strip()]
 
 
 def load_yaml(path: Path) -> dict:

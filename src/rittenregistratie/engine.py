@@ -51,6 +51,8 @@ class Engine:
             fallback_seed_address=settings.seed_address,
             fallback_seed_odometer=settings.seed_odometer,
         )
+        from .onboarding import OnboardingStore
+        self.onboarding = OnboardingStore(settings.onboarding_file)
 
         # Instantiate configured plugins (shared across cars). Any trajectory
         # provider whose constructor accepts an ``api_key`` parameter receives
@@ -84,6 +86,97 @@ class Engine:
                 f"Number {sender} is not registered to any car."
             )
         return car
+
+    # --- onboarding ---------------------------------------------------
+    def reload_cars(self) -> None:
+        self.cars = CarRegistry(
+            load_yaml(self.settings.cars_file),
+            fallback_seed_address=self.settings.seed_address,
+            fallback_seed_odometer=self.settings.seed_odometer,
+        )
+
+    def is_admin(self, sender: str) -> bool:
+        from .cars import normalize_phone
+        return normalize_phone(sender) in self.settings.admin_list()
+
+    def register_join_request(self, sender: str, first_message: str) -> bool:
+        """Record a pending join request. Returns True if newly added."""
+        return self.onboarding.add(sender, first_message)
+
+    def handle_admin_command(self, cmd: str, args: list) -> str:
+        """Process an admin onboarding command; returns a reply for the admin."""
+        from .cars import add_car_to_yaml, normalize_phone, slugify_car_id
+
+        if cmd == "help":
+            return (
+                "Admin commands:\n"
+                "pending — list join requests\n"
+                "approve <number> <label> <seed_odo> [address...] — add a user\n"
+                "deny <number> — reject a request"
+            )
+        if cmd == "pending":
+            reqs = self.onboarding.list()
+            if not reqs:
+                return "No pending join requests."
+            lines = ["Pending join requests:"]
+            for r in reqs:
+                lines.append(f"- {r.phone}: \"{r.first_message[:40]}\" ({r.requested_at})")
+            lines.append("\nApprove: approve <number> <label> <seed_odo> [address]")
+            return "\n".join(lines)
+        if cmd == "deny":
+            if not args:
+                return "Usage: deny <number>"
+            phone = normalize_phone(args[0])
+            return (
+                f"Denied and removed request from {phone}."
+                if self.onboarding.remove(phone)
+                else f"No pending request from {phone}."
+            )
+        if cmd == "approve":
+            if len(args) < 3:
+                return (
+                    "Usage: approve <number> <label> <seed_odo> [address...]\n"
+                    "e.g. approve 31612345678 \"Alice Golf\" 45000 Home"
+                )
+            phone = normalize_phone(args[0])
+            # label may be quoted; support simple quoted first token or single word
+            rest = args[1:]
+            label, seed_odo, address = self._parse_approve_args(rest)
+            if seed_odo is None:
+                return "Could not find the seed odometer (a number). " \
+                       "Usage: approve <number> <label> <seed_odo> [address]"
+            existing = list(self.cars._cars.keys())
+            car_id = slugify_car_id(label, existing)
+            try:
+                add_car_to_yaml(
+                    self.settings.cars_file, car_id, label,
+                    address or self.settings.seed_address, seed_odo, phone,
+                )
+            except ValueError as exc:
+                return f"Could not add: {exc}"
+            self.onboarding.remove(phone)
+            self.reload_cars()
+            return (
+                f"Approved {phone} as '{label}' (car id: {car_id}, "
+                f"seed {seed_odo} km at {address or self.settings.seed_address})."
+            )
+        return "Unknown command. Send 'help'."
+
+    @staticmethod
+    def _parse_approve_args(rest: list):
+        """From [label..., seed_odo, address...] extract label, odo, address.
+
+        The seed odometer is the first purely-numeric token; everything before it
+        is the label, everything after is the address.
+        """
+        odo_idx = next((i for i, t in enumerate(rest) if t.isdigit()), None)
+        if odo_idx is None:
+            label = " ".join(rest).strip('"')
+            return label, None, ""
+        label = " ".join(rest[:odo_idx]).strip('"') or "New car"
+        seed_odo = int(rest[odo_idx])
+        address = " ".join(rest[odo_idx + 1:]).strip('"')
+        return label, seed_odo, address
 
     def handle_text(
         self, text: str, sender: str, now: datetime | None = None

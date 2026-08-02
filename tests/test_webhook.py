@@ -101,3 +101,12 @@ def test_send_message_uses_graph_url(monkeypatch):
                                      graph_url="https://graph.facebook.com/v25.0"))
     assert ok
     assert captured["url"] == "https://graph.facebook.com/v25.0/PID/messages"
+
+
+def test_unregistered_number_gets_onboarding(client, tmp_path):
+    # An unregistered number should get an onboarding reply and a pending request.
+    resp = client.post("/webhook", json=_msg("hello", sender="31699999999"))
+    assert resp.status_code == 200
+    import json
+    ob = json.loads((tmp_path / "data" / "onboarding.json").read_text())
+    assert "31699999999" in ob
