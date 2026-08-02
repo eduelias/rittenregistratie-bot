@@ -11,7 +11,6 @@ from typing import Type
 GROUPS = {
     "odometer": "rittenregistratie.odometer",
     "trajectory": "rittenregistratie.trajectory",
-    "delta": "rittenregistratie.delta",
     "privatecap": "rittenregistratie.privatecap",
 }
 
@@ -34,10 +33,6 @@ def get_odometer_source(name: str):
 
 def get_trajectory_provider(name: str):
     return _load("trajectory", name)
-
-
-def get_delta_allocator(name: str):
-    return _load("delta", name)
 
 
 def get_private_cap_plugin(name: str):

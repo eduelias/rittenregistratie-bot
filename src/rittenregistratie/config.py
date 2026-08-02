@@ -36,7 +36,6 @@ class Settings(BaseSettings):
     # Plugin selection (entry-point names)
     odometer_source: str = "whatsapp_manual"
     trajectory_provider: str = "maps_link"
-    delta_allocator: str = "noop"
     private_cap_plugin: str = "warn"
     # Optional per-user override: numbers in private_cap_override_numbers use
     # private_cap_plugin_override instead of the default cap plugin.

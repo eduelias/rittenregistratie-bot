@@ -1,10 +1,11 @@
-"""Data models shared across the core and plugins.
+"""Data models for the trip recorder.
 
-These are the stable contract that plugin packages depend on.
+These describe a trip exactly as the user reports it. The core records what it
+receives and never fabricates, invents, or reclassifies trips.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -13,13 +14,10 @@ from typing import Optional
 class TripType(str, Enum):
     BUSINESS = "business"
     PRIVATE = "private"
-    # 'virtual' is produced only by external plugins, never by the core.
-    VIRTUAL = "virtual"
 
 
 class TripSource(str, Enum):
     WHATSAPP = "whatsapp"
-    GENERATED = "generated"  # produced by an external DeltaAllocator plugin
     MERCEDES = "mercedes"
 
 
@@ -45,12 +43,13 @@ class TrajectoryResult:
 
 @dataclass
 class Trip:
-    """A single audit-relevant trip row.
+    """A single audit-relevant trip row, exactly as reported by the user.
 
     Fields map directly onto the Belastingdienst 'sluitende rittenregistratie'
     requirements: date, begin/end odometer, begin/end address, driven route
     (with a note when it deviates from the usual route) and the
-    business/private character of the trip.
+    business/private character of the trip. The recorded distance is always the
+    real odometer difference.
     """
 
     date: datetime
@@ -70,26 +69,11 @@ class Trip:
 
 
 @dataclass
-class VirtualTrip:
-    """A trip proposed by an external DeltaAllocator plugin.
-
-    The core never creates these itself; it only provides the type so plugins
-    have a stable return contract.
-    """
-
-    end_address: str
-    km: int
-    date: datetime
-    note: str = ""
-
-
-@dataclass
 class CapAction:
-    """Result of a PrivateCapPlugin evaluation."""
+    """Result of a PrivateCapPlugin evaluation. The core's default only reports a
+    message (e.g. remaining private km); it never modifies recorded trips."""
 
     message: str
-    converted_km: int = 0
-    modified: bool = False
 
 
 @dataclass

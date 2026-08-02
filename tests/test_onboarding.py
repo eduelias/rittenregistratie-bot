@@ -25,7 +25,7 @@ def settings(tmp_path):
         config_dir=cfg,
         admin_numbers="31600000001",
         trajectory_provider="maps_link",
-        delta_allocator="noop",
+        
         private_cap_plugin="warn",
         whatsapp_app_secret="",
     )

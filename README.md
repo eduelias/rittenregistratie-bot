@@ -36,8 +36,8 @@ comfortably on a Raspberry Pi.
 - **Private/business** classification with the 500 km/year cap awareness.
 - **Ask-for-address** — unknown destinations prompt for an address or a shared
   location (reverse-geocoded).
-- **Plugin system** — swap odometer source, trajectory provider, delta handling
-  and cap behaviour via entry points; the core stays inert and safe.
+- **Plugin system** — swap odometer source, trajectory provider and private-cap
+  reporting via entry points; the core stays a faithful recorder.
 - **Self-hosted** — FastAPI + WhatsApp Cloud API, exposed via Cloudflare Tunnel,
   runs great on a Raspberry Pi.
 - **`ping` → `pong`** connectivity check built in.
@@ -135,13 +135,11 @@ packages can add or override behaviour without changing the core:
 |------------------------------|------------------------|--------------------------------------|
 | `rittenregistratie.odometer` | `whatsapp_manual`      | where odometer readings come from    |
 | `rittenregistratie.trajectory`| `maps_link` / `google`| resolve the route between addresses  |
-| `rittenregistratie.delta`    | `noop`                 | handle excess km vs. expected route  |
-| `rittenregistratie.privatecap`| `warn`                | react to the 500 km/yr private cap   |
+| `rittenregistratie.privatecap`| `warn`                | report on the 500 km/yr private cap  |
 
-The shipped defaults are **inert and safe**: `noop` never generates trips and
-`warn` never reclassifies them. AI-based trip allocation and private-use
-reallocation are intentionally **not** part of this open-source core; they live
-in separate plugin packages.
+The core is a **faithful recorder**: it stores each trip exactly as reported
+(the distance is always the real odometer difference) and never fabricates,
+invents, or reclassifies trips. The shipped `warn` plugin only reports a message.
 
 ### Per-user private-cap plugin
 
@@ -150,12 +148,13 @@ By default one private-cap plugin applies to everyone. You can apply a
 
 ```
 RIT_PRIVATE_CAP_PLUGIN=warn                 # default for everyone
-RIT_PRIVATE_CAP_PLUGIN_OVERRIDE=reallocate  # special plugin...
+RIT_PRIVATE_CAP_PLUGIN_OVERRIDE=my_plugin   # a plugin you install...
 RIT_PRIVATE_CAP_OVERRIDE_NUMBERS=31612345678,31698765432  # ...only for these
 ```
 
 A car uses the override plugin if any of its numbers is on the list; all other
-cars keep the default. Leave the override empty to disable this.
+cars keep the default. Leave the override empty to disable this. You are
+responsible for the behaviour of any plugin you install.
 
 See `docs/plugins.md`.
 
@@ -166,10 +165,10 @@ See `docs/plugins.md`.
 </p>
 
 Your WhatsApp message → Meta Cloud API → Cloudflare Tunnel → the FastAPI webhook
-on your Raspberry Pi. The parser turns it into a trip, the (inert) core Engine
-resolves the car, updates state and appends a compliant Excel row, then replies.
-Four plugin entry points let you swap the odometer source, trajectory provider,
-delta handling and private-cap behaviour without touching the core.
+on your Raspberry Pi. The parser turns it into a trip, the core Engine resolves
+the car, updates state and appends a compliant Excel row, then replies. Plugin
+entry points let you swap the odometer source, trajectory provider and
+private-cap reporting without touching the core.
 
 ## Quick start
 

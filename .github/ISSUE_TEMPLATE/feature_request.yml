@@ -36,5 +36,5 @@ body:
     attributes:
       label: Compliance principle
       options:
-        - label: This does not make the open-source core fabricate or reclassify trips (such logic belongs in a plugin).
+        - label: This keeps the core a faithful recorder — it does not make the core fabricate, invent, or reclassify trips.
           required: true

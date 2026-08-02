@@ -6,9 +6,10 @@ get set up and what we expect from contributions.
 ## Ground rules
 
 - Be respectful — see [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
-- The **open-source core never fabricates, invents, or reclassifies trips.** Any
-  feature that generates or alters trip data belongs in a separate plugin
-  package, not here. PRs that break this principle will not be merged.
+- The **open-source core is a faithful recorder**: it stores each trip exactly
+  as reported by the user (the distance is always the real odometer difference)
+  and never fabricates, invents, or reclassifies trips. PRs that break this
+  principle will not be merged.
 - Keep the core dependency-light and Raspberry-Pi friendly.
 
 ## Development setup
