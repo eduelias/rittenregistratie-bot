@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rittenregistratie-events-example"
+version = "0.1.0"
+description = "Reference event plugin for rittenregistratie-bot: shows how a package talks to the core over the event bus."
+requires-python = ">=3.11"
+dependencies = ["rittenregistratie"]
+
+# This is the whole integration: one callable, called once at startup with the
+# core's EventBus. Selected by RIT_EVENT_PLUGINS (default "*" = all installed).
+[project.entry-points."rittenregistratie.events"]
+example = "rittenregistratie_events_example:register"
+
+[tool.setuptools.packages.find]
+where = ["."]

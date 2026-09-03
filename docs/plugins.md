@@ -75,6 +75,32 @@ error to the user if it fails. The raw ledger is never modified by an export.
 Enable with `RIT_EVENT_PLUGINS=*` (default: all installed) or a comma-separated
 list of entry-point names; empty disables all event plugins.
 
+### Reference plugin and dry runs
+
+`examples/rittenregistratie-events-example/` is a complete, installable event
+plugin: a `pyproject.toml` with the entry point, `register(bus)`, and one
+handler per event with the typed payloads from `rittenregistratie.events`
+(`PreGeneratePayload`, `PostGeneratePayload`, `TripRow`, `with_trips`). Copy
+it, keep the signatures, replace the bodies.
+
+```bash
+pip install -e examples/rittenregistratie-events-example   # picked up automatically
+```
+
+Develop against the real ledger without sending anything:
+
+```bash
+python -m rittenregistratie.export mercedes 2026            # all installed plugins
+python -m rittenregistratie.export mercedes --plugins example
+python -m rittenregistratie.export mercedes --no-plugins   # pass-through baseline
+python -m rittenregistratie.export mercedes 2026 --json    # print the validated rows
+```
+
+Each run prints the plugins loaded, the row count before and after, and the
+path of the generated workbook (a temp dir unless `--out` is given). A plugin
+that returns malformed rows fails here with the same message the user would
+see on WhatsApp.
+
 ## Important note
 
 The core is a faithful recorder: it stores each trip exactly as reported (the

@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import logging
 from importlib.metadata import entry_points
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional, TypedDict
 
 log = logging.getLogger("rittenregistratie.events")
 
@@ -50,6 +50,56 @@ EXPORT_POST_GENERATE = "export.post_generate"
 ENTRY_POINT_GROUP = "rittenregistratie.events"
 
 Handler = Callable[[Any], Any]
+
+
+# --- payload contract (plain dicts on the wire; these types document them) ---
+
+class TripRow(TypedDict, total=False):
+    """One trip as it appears in the raw ledger and in export payloads.
+
+    Required for the export to accept a row: ``timestamp`` (ISO-8601),
+    ``start_odo``, ``end_odo`` (int), ``start_address``, ``end_address`` (str),
+    ``is_private`` (bool). Optional: ``route``, ``private_detour_km``,
+    ``note``, ``destination_raw``, ``raw_message``.
+    """
+
+    timestamp: str
+    start_odo: int
+    end_odo: int
+    start_address: str
+    end_address: str
+    is_private: bool
+    route: str
+    private_detour_km: int
+    note: str
+    destination_raw: str
+    raw_message: str
+
+
+class PreGeneratePayload(TypedDict):
+    """Payload of ``export.pre_generate``; return the same shape."""
+
+    car_id: str
+    year: int
+    data_dir: str
+    config_dir: str
+    trips: List[TripRow]
+
+
+class PostGeneratePayload(TypedDict):
+    """Payload of ``export.post_generate``; return value is ignored."""
+
+    car_id: str
+    year: int
+    path: str
+    rows: int
+
+
+def with_trips(payload: PreGeneratePayload, trips: List[TripRow]) -> PreGeneratePayload:
+    """Return a copy of ``payload`` carrying ``trips`` (the idiomatic handler return)."""
+    out = dict(payload)
+    out["trips"] = list(trips)
+    return out  # type: ignore[return-value]
 
 
 class EventBus:

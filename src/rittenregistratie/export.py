@@ -154,3 +154,78 @@ class ExportService:
             "car_id": car_id, "year": year, "path": str(path), "rows": len(rows),
         })
         return ExportResult(car_id=car_id, year=year, path=path, rows=len(rows), handlers=handlers)
+
+
+# --- CLI: dry-run the export pipeline (and any installed event plugins) -------
+
+def main(argv=None) -> int:
+    """``python -m rittenregistratie.export <car_id> [year ...] [--out DIR]``.
+
+    Runs the same pipeline the WhatsApp ``excel`` command uses, against the
+    real ledger, writing to ``--out`` (default: a temporary directory that is
+    printed and kept). Use it to develop and check an event plugin without
+    sending anything. ``--no-plugins`` runs the pass-through pipeline;
+    ``--plugins a,b`` loads only those entry points.
+    """
+    import argparse
+    import json
+    import tempfile
+
+    from .events import EventBus, load_event_plugins
+
+    ap = argparse.ArgumentParser(prog="python -m rittenregistratie.export",
+                                 description=main.__doc__.split("\n\n")[1])
+    ap.add_argument("car_id")
+    ap.add_argument("years", nargs="*", type=int, help="default: every year with trips")
+    ap.add_argument("--out", type=Path, default=None, help="output dir (default: temp dir)")
+    ap.add_argument("--data-dir", type=Path, default=None)
+    ap.add_argument("--config-dir", type=Path, default=None)
+    ap.add_argument("--no-plugins", action="store_true", help="ignore installed event plugins")
+    ap.add_argument("--plugins", default=None, help="comma-separated entry-point names to load")
+    ap.add_argument("--json", action="store_true", help="also dump the validated rows as JSON lines")
+    args = ap.parse_args(argv)
+
+    kw = {}
+    if args.data_dir:
+        kw["data_dir"] = args.data_dir
+    if args.config_dir:
+        kw["config_dir"] = args.config_dir
+    settings = Settings(**kw)
+
+    bus = EventBus()
+    if args.no_plugins:
+        loaded: List[str] = []
+    else:
+        selection = None if args.plugins is None else [p for p in args.plugins.split(",") if p.strip()]
+        loaded = load_event_plugins(bus, selection)
+    print(f"event plugins: {loaded or 'none (pass-through)'}")
+
+    svc = ExportService(settings, bus)
+    years = args.years or svc.years(args.car_id)
+    if not years:
+        print(f"No trips recorded for '{args.car_id}'.")
+        return 1
+    out_dir = args.out or Path(tempfile.mkdtemp(prefix="rittenregistratie-export-"))
+
+    rc = 0
+    for year in years:
+        try:
+            res = svc.generate(args.car_id, year, out_dir=out_dir)
+        except ExportError as exc:
+            print(f"{year}: FAILED: {exc}")
+            rc = 2
+            continue
+        raw = len(svc.trips_for_year(args.car_id, year))
+        print(f"{year}: {res.rows} rows (ledger had {raw}) -> {res.path}")
+        if args.json:
+            for row in validate_trips(bus.emit(EXPORT_PRE_GENERATE, {
+                "car_id": args.car_id, "year": year,
+                "data_dir": str(settings.data_dir), "config_dir": str(settings.config_dir),
+                "trips": svc.trips_for_year(args.car_id, year),
+            })["trips"]):
+                print(json.dumps(row, ensure_ascii=False))
+    return rc
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
