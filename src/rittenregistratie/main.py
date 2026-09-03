@@ -1,13 +1,16 @@
 """FastAPI application: WhatsApp Cloud API webhook."""
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import FastAPI, Request, Response
+from starlette.background import BackgroundTask
 
 from . import whatsapp
 from .config import get_settings
-from .engine import Engine, EngineError, UnknownCarError
+from .engine import Engine, EngineError, ExportRequest, UnknownCarError
+from .export import ExportError
 from .parser import ParseError
 
 logging.basicConfig(level=logging.INFO)
@@ -150,6 +153,19 @@ async def webhook(request: Request) -> Response:
         await _send_all(sender, reply, extra_notify)
         return Response(status_code=200, content="ok")
     else:
+        # Spreadsheet request: acknowledge now, generate and send in the
+        # background (a plugin may take a while; Meta wants a fast 200).
+        try:
+            export_req = _engine.parse_export_command(text or "", sender)
+        except (EngineError, UnknownCarError) as exc:
+            await _send_all(sender, f"Could not export: {exc}", extra_notify)
+            return Response(status_code=200, content="ok")
+        if export_req is not None:
+            await _ack_export(sender, message_id)
+            return Response(
+                status_code=200, content="ok",
+                background=BackgroundTask(_run_export, sender, export_req),
+            )
         try:
             if text and text.strip().lower() in ("ping", "/ping"):
                 # Simple connectivity check: no trip logged, no state touched.
@@ -220,3 +236,56 @@ async def _send_all(
             _settings.whatsapp_token, _settings.whatsapp_phone_number_id,
             to, body, graph_url=graph_url,
         )
+
+
+async def _ack_export(sender: str, message_id: str | None) -> None:
+    """Tell the sender the export started: an hourglass reaction, or text."""
+    graph_url = f"https://graph.facebook.com/{_settings.whatsapp_graph_version}"
+    mode = (_settings.reply_mode or "text").strip().lower()
+    if mode in ("reaction", "both") and message_id:
+        ok = await whatsapp.send_reaction(
+            _settings.whatsapp_token, _settings.whatsapp_phone_number_id,
+            sender, message_id, emoji="\u23F3", graph_url=graph_url,
+        )
+        if ok and mode == "reaction":
+            return
+    await whatsapp.send_message(
+        _settings.whatsapp_token, _settings.whatsapp_phone_number_id,
+        sender, "Generating your spreadsheet\u2026", graph_url=graph_url,
+    )
+
+
+async def _run_export(sender: str, req: ExportRequest) -> None:
+    """Generate one workbook per requested year and send each as a document."""
+    graph_url = f"https://graph.facebook.com/{_settings.whatsapp_graph_version}"
+    token, pid = _settings.whatsapp_token, _settings.whatsapp_phone_number_id
+
+    async def tell(text: str) -> None:
+        await whatsapp.send_message(token, pid, sender, text, graph_url=graph_url)
+
+    for year in req.years:
+        try:
+            result = await asyncio.to_thread(_engine.exporter.generate, req.car.car_id, year)
+        except ExportError as exc:
+            await tell(f"Export {year} failed: {exc}")
+            continue
+        except Exception:  # pragma: no cover - defensive
+            log.exception("export failed for %s %s", req.car.car_id, year)
+            await tell(f"Export {year} failed: internal error.")
+            continue
+        media_id = await whatsapp.upload_media(token, pid, result.path, graph_url=graph_url)
+        if not media_id:
+            await tell(f"Export {year} is ready but the upload to WhatsApp failed.")
+            continue
+        caption = f"{req.car.label} \u2014 {year} \u2014 {result.rows} trips"
+        if result.handlers:
+            caption += f" (processed by {result.handlers} plugin"
+            caption += "s)" if result.handlers != 1 else ")"
+        sent = await whatsapp.send_document(
+            token, pid, sender, media_id, result.path.name, caption=caption,
+            graph_url=graph_url,
+        )
+        if not sent:
+            await tell(f"Export {year} is ready but could not be sent.")
+        else:
+            log.info("Export %s/%s sent to %s (%s rows).", req.car.car_id, year, sender, result.rows)

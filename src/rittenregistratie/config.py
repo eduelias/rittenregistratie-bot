@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     private_cap_plugin_override: str = ""
     private_cap_override_numbers: str = ""
 
+    # Event plugins (entry-point group "rittenregistratie.events"): "*" loads
+    # every installed plugin, "" loads none, or a comma-separated list of names.
+    event_plugins: str = "*"
+
     # Compliance
     private_cap_km: int = 500
 
@@ -69,6 +73,18 @@ class Settings(BaseSettings):
     def learned_locations_file(self) -> Path:
         """Addresses learned from chat replies. Kept out of the committed config."""
         return self.data_dir / "locations-learned.yaml"
+
+    @property
+    def exports_dir(self) -> Path:
+        """Where on-demand spreadsheets are written."""
+        return self.data_dir / "exports"
+
+    def event_plugin_selection(self) -> Optional[list[str]]:
+        """None = load all installed event plugins; a list = only those names."""
+        raw = (self.event_plugins or "").strip()
+        if raw == "*":
+            return None
+        return [n.strip() for n in raw.split(",") if n.strip()]
 
     @property
     def cars_file(self) -> Path:

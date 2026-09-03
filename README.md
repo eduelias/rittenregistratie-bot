@@ -13,8 +13,8 @@
 
 A self-hosted WhatsApp bot that keeps a **Belastingdienst-compliant trip log
 (rittenregistratie)** for one or more cars. You send a WhatsApp message with your
-odometer reading and destination; it appends an audit-ready row to a per-year
-Excel file and replies with a summary.
+odometer reading and destination; it records the trip in an append-only ledger
+and, whenever you ask, sends you the audit-ready per-year Excel file.
 
 Designed to help holders of the Dutch
 [*Verklaring geen privégebruik auto*](https://www.belastingdienst.nl/wps/wcm/connect/nl/personeel-en-loon/content/verklaring-geen-privegebruik-auto-aanvragen-wijzigen-intrekken)
@@ -30,8 +30,14 @@ comfortably on a Raspberry Pi.
 ## Features
 
 - **Log by WhatsApp** — one message per trip: `145230 Office`.
-- **Belastingdienst-compliant Excel** — date, begin/end odometer, begin/end
-  address, route, private/business, per year and per car.
+- **Belastingdienst-compliant Excel on request** — send `excel` and the bot
+  replies with the per-year workbook (date, begin/end odometer, begin/end
+  address, route, private/business) as a WhatsApp document.
+- **Append-only ledger as the only store** — every trip is one JSON line,
+  written once and never modified; spreadsheets are views generated from it.
+- **Event bus for plugins** — the core emits `export.pre_generate` and
+  `export.post_generate`; a plugin may transform the data before the workbook
+  is written. Without plugins the export is exactly what you typed.
 - **Multi-car** — sender phone number selects the car; separate logs per car.
 - **Private/business** classification with the 500 km/year cap awareness.
 - **Ask-for-address** — unknown destinations prompt for an address, the name of
@@ -149,6 +155,35 @@ keeps their existing trip logs on disk.
 
 Set `RIT_ONBOARDING_ENABLED=false` to silently ignore unregistered numbers.
 
+## Storage and export
+
+Trips are stored **only** in the append-only ledger
+`data/raw-ledger-<car>.jsonl`, exactly as you reported them. No spreadsheet is
+written when you log a trip.
+
+Ask for the workbook over WhatsApp:
+
+```
+excel              # current year, your car
+excel 2025         # a given year
+excel all          # one file per year with trips
+excel van 2025     # admins only: another car
+```
+
+The bot reacts ⏳ (or replies "Generating…" in text mode), builds the workbook
+in the background, and sends it as a document. The file is also kept at
+`data/exports/trips-<car>-<year>.xlsx` and replaced on the next export.
+
+The export pipeline is where plugins may act (see [Plugin system](#plugin-system)):
+
+1. read the ledger rows for the car and year;
+2. emit `export.pre_generate` with the rows as plain JSON objects and take back
+   what the handlers return — with no plugin installed, the rows unchanged;
+3. validate the result (required fields, integer odometers, ISO timestamps, a
+   non-decreasing odometer chain); a bad result aborts the export with an error
+   message rather than sending a partial file;
+4. write the workbook and emit `export.post_generate` with its path.
+
 ## Excel schema (exactly the Belastingdienst per-trip fields)
 
 Each trip is one row with exactly the fields the Belastingdienst requires —
@@ -168,11 +203,12 @@ One file per car per year: `trips-<car>-<year>.xlsx`. See
 
 ## Immutable raw ledger
 
-Every trip is also appended, exactly as you reported it, to an **append-only**
+Every trip is appended, exactly as you reported it, to the **append-only**
 ledger at `data/raw-ledger-<car>.jsonl` (one JSON object per line). This ledger
-is never modified after writing and is the pristine source of truth.
+is never modified after writing and is the single source of truth.
 
-Rebuild the compliant spreadsheet from it at any time:
+Besides the WhatsApp `excel` command, a pristine spreadsheet (bypassing all
+plugins) can be rebuilt from the command line:
 
 ```bash
 python -m rittenregistratie.rebuild <car_id> [--out ./restore]
@@ -180,8 +216,12 @@ python -m rittenregistratie.rebuild <car_id> [--out ./restore]
 
 ## Plugin system
 
-Four extension points are discovered via setuptools entry points, so other
-packages can add or override behaviour without changing the core:
+Extension points are discovered via setuptools entry points, so other packages
+can add or override behaviour without changing the core. Three select an
+implementation by name; the fourth, `rittenregistratie.events`, lets a package
+subscribe to the events the core emits (today: `export.pre_generate` and
+`export.post_generate`). Select event plugins with `RIT_EVENT_PLUGINS`
+(`*` all installed, empty none, or a list of names).
 
 | Group                        | Default (shipped)      | Purpose                              |
 |------------------------------|------------------------|--------------------------------------|

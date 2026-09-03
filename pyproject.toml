@@ -37,6 +37,10 @@ manual = "rittenregistratie.plugins.trajectory_manual:ManualProvider"
 [project.entry-points."rittenregistratie.privatecap"]
 warn = "rittenregistratie.plugins.privatecap_warn:WarnPlugin"
 
+# Event subscribers ("rittenregistratie.events"): each entry point is a callable
+# register(bus). The core ships none; without subscribers every event is a
+# pass-through. See docs/plugins.md.
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

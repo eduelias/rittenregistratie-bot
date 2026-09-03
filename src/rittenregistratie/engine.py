@@ -5,18 +5,21 @@ own state file, Excel logs and seed origin/odometer.
 
 This module contains no AI and never fabricates, invents, or reclassifies
 trips. The distance recorded for each trip is always the real odometer
-difference reported by the user. It only *invokes* the configured
-PrivateCapPlugin, whose default only reports a message.
+difference reported by the user. Trips are stored only in the append-only raw
+ledger; spreadsheets are generated on request (see :mod:`.export`), which is
+also the only point where plugins may transform data, via the event bus.
 """
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from .cars import Car, CarRegistry
 from .config import Settings, load_yaml, save_location
-from .excel_writer import ExcelWriter
+from .events import EventBus, load_event_plugins
+from .export import ExportService
 from .models import (
     ParsedMessage,
     Reply,
@@ -42,12 +45,20 @@ class UnknownCarError(EngineError):
 # Replies (case-insensitive) that drop a trip waiting for an address.
 _CANCEL_WORDS = frozenset({"cancel", "/cancel", "skip", "stop", "annuleer"})
 _HAS_LETTER_RE = re.compile(r"[^\W\d_]")
+# Commands that request a spreadsheet: "excel", "excel 2025", "excel all",
+# and for admins "excel <car_id> [year|all]".
+_EXPORT_WORDS = frozenset({"excel", "export", "xlsx", "sheet", "spreadsheet"})
+
+
+@dataclass
+class ExportRequest:
+    car: Car
+    years: List[int]
 
 
 class Engine:
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.excel_dir = settings.data_dir
         self.routebook = self._load_routebook()
         self.cars = CarRegistry(
             load_yaml(settings.cars_file),
@@ -73,6 +84,13 @@ class Engine:
             self.cap_plugin_override = registry.get_private_cap_plugin(
                 settings.private_cap_plugin_override
             )()
+
+        # Event bus: plugins subscribe at startup; the core emits on export.
+        self.bus = EventBus()
+        self.event_plugins = load_event_plugins(
+            self.bus, settings.event_plugin_selection()
+        )
+        self.exporter = ExportService(settings, self.bus)
 
     def _load_routebook(self) -> RouteBook:
         """Seed locations from config, then learned locations from data/."""
@@ -167,7 +185,7 @@ class Engine:
             self.reload_cars()
             return (
                 f"Removed user '{removed}'. Their trip logs and state files are "
-                f"kept on disk (trips-{removed}-*.xlsx, state-{removed}.json)."
+                f"kept on disk (raw-ledger-{removed}.jsonl, state-{removed}.json)."
             )
         if cmd == "pending":
             reqs = self.onboarding.list()
@@ -238,6 +256,48 @@ class Engine:
         seed_odo = int(rest[odo_idx])
         address = " ".join(rest[odo_idx + 1:]).strip('"')
         return label, seed_odo, address
+
+    def parse_export_command(
+        self, text: str, sender: str, now: datetime | None = None,
+    ) -> Optional[ExportRequest]:
+        """Recognise a spreadsheet request; None if ``text`` is not one.
+
+        ``excel`` exports the current year of the sender's car; ``excel 2025``
+        a given year; ``excel all`` every year with trips. Admins may name a car
+        first: ``excel van 2025``. Raises EngineError for bad arguments.
+        """
+        parts = (text or "").strip().split()
+        if not parts or parts[0].lower().lstrip("/") not in _EXPORT_WORDS:
+            return None
+        now = now or datetime.now()
+        car: Optional[Car] = None
+        years: List[int] = []
+        want_all = False
+        for arg in parts[1:]:
+            low = arg.lower()
+            if low == "all":
+                want_all = True
+            elif low.isdigit() and len(low) == 4:
+                years.append(int(low))
+            else:
+                if not self.is_admin(sender):
+                    raise EngineError(
+                        "Send 'excel', 'excel <year>' or 'excel all'. Only admins "
+                        "can export another car."
+                    )
+                found = self.cars.get(arg)
+                if found is None:
+                    raise EngineError(f"Unknown car '{arg}'.")
+                car = found
+        if car is None:
+            car = self.resolve_car(sender)
+        if want_all:
+            years = self.exporter.years(car.car_id)
+            if not years:
+                raise EngineError(f"No trips recorded yet for {car.label}.")
+        elif not years:
+            years = [now.year]
+        return ExportRequest(car=car, years=sorted(set(years)))
 
     def handle_text(
         self, text: str, sender: str, now: datetime | None = None
@@ -395,8 +455,6 @@ class Engine:
         *, end_odo: int, destination: str, is_private: bool,
         learned: str = "", note: str = "", raw_message: str = "",
     ) -> str:
-        excel = ExcelWriter(self.excel_dir, car.car_id)
-
         origin_name = state.last_address or car.seed_address
         start_odo = state.last_odometer
         trip_km = end_odo - start_odo
@@ -434,12 +492,10 @@ class Engine:
             private_detour_km=0,
             source=TripSource.WHATSAPP,
         )
-        excel.append_trip(trip)
 
-        # Keep an immutable, append-only record of every trip exactly as
-        # reported by the user, so the pristine data is always preserved and the
-        # spreadsheet can be rebuilt from it at any time. This ledger is never
-        # modified after writing.
+        # The append-only raw ledger is the only store. Every trip is written
+        # exactly as reported; spreadsheets are generated from it on request
+        # and this file is never modified after writing.
         from .raw_ledger import RawLedger, RawTrip
         RawLedger(self.settings.raw_ledger_file(car.car_id)).append(RawTrip(
             timestamp=now.isoformat(timespec="seconds"),
@@ -465,15 +521,6 @@ class Engine:
                 "year": now.year,
             },
         )
-        # A plugin may report km it moved out of the private total (e.g. a
-        # private-repo plugin that edits the records). Apply it to the counter so
-        # the state stays consistent with what the plugin wrote.
-        converted = getattr(cap, "converted_km", 0)
-        if converted:
-            state.private_km[str(now.year)] = max(
-                0, state.private_ytd(now.year) - converted
-            )
-
         store.save(state)
 
         lines: List[str] = [

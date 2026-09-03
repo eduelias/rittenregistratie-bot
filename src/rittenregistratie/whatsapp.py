@@ -163,6 +163,64 @@ async def send_message(
     )
 
 
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+async def upload_media(
+    token: str, phone_number_id: str, path, mime: str = XLSX_MIME,
+    graph_url: str = GRAPH_URL,
+) -> Optional[str]:
+    """Upload a file to the Cloud API media endpoint. Returns the media id.
+
+    Returns None (and logs) on failure. The id is then used by
+    :func:`send_document`.
+    """
+    from pathlib import Path as _Path
+    if not token or not phone_number_id:
+        return None
+    path = _Path(path)
+    url = f"{graph_url}/{phone_number_id}/media"
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            with path.open("rb") as fh:
+                resp = await client.post(
+                    url,
+                    headers={"Authorization": f"Bearer {token}"},
+                    data={"messaging_product": "whatsapp", "type": mime},
+                    files={"file": (path.name, fh, mime)},
+                )
+        if resp.status_code >= 400:
+            log.warning("WhatsApp media upload failed (%s): %s", resp.status_code, resp.text)
+            return None
+        return resp.json().get("id") or None
+    except (httpx.HTTPError, OSError, ValueError) as exc:
+        log.warning("WhatsApp media upload errored: %s", exc)
+        return None
+
+
+async def send_document(
+    token: str, phone_number_id: str, to: str, media_id: str, filename: str,
+    caption: str = "", graph_url: str = GRAPH_URL,
+) -> bool:
+    """Send a previously uploaded file as a document message."""
+    if not media_id:
+        return False
+    document = {"id": media_id, "filename": filename}
+    if caption:
+        document["caption"] = caption
+    return await _post_message(
+        token, phone_number_id,
+        {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "document",
+            "document": document,
+        },
+        graph_url, "document",
+    )
+
+
 async def send_reaction(
     token: str, phone_number_id: str, to: str, message_id: str,
     emoji: str = "\U0001F44D", graph_url: str = GRAPH_URL,
