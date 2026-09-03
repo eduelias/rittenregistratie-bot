@@ -62,20 +62,37 @@ class ExcelWriter:
             ws.append(HEADERS)
         return wb, ws, path
 
+    @staticmethod
+    def _row(trip: Trip) -> list:
+        return [
+            trip.date.strftime("%Y-%m-%d"),
+            trip.start_odo,
+            trip.end_odo,
+            trip.start_address,
+            trip.end_address,
+            trip.route,  # only populated when the usual route was not taken
+            _pb(trip.trip_type),
+            trip.private_detour_km or "",
+        ]
+
+    def write_all(self, year: int, trips: List[Trip]) -> Path:
+        """Write a fresh workbook for ``year`` holding exactly ``trips``.
+
+        Replaces any existing file for that year. Used by on-demand export.
+        """
+        path = self._path_for_year(year)
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Ritten"
+        ws.append(HEADERS)
+        for trip in trips:
+            ws.append(self._row(trip))
+        wb.save(path)
+        return path
+
     def append_trip(self, trip: Trip) -> Path:
         year = trip.date.year
         wb, ws, path = self._open(year)
-        ws.append(
-            [
-                trip.date.strftime("%Y-%m-%d"),
-                trip.start_odo,
-                trip.end_odo,
-                trip.start_address,
-                trip.end_address,
-                trip.route,  # only populated when the usual route was not taken
-                _pb(trip.trip_type),
-                trip.private_detour_km or "",
-            ]
-        )
+        ws.append(self._row(trip))
         wb.save(path)
         return path

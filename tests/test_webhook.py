@@ -224,3 +224,87 @@ def test_reaction_mode_falls_back_to_text_when_reaction_fails(reaction_client, m
     monkeypatch.setattr(main.whatsapp, "send_reaction", failing_reaction)
     client.post("/webhook", json=_msg_with_id("140 Office", "wamid.T1"))
     assert len(sent["texts"]) == 1 and "40 km" in sent["texts"][0][1]
+
+
+# --- on-demand export --------------------------------------------------------
+
+def test_upload_media_and_send_document(monkeypatch, tmp_path):
+    import asyncio
+    import rittenregistratie.whatsapp as wa
+    f = tmp_path / "trips-car-2026.xlsx"
+    f.write_bytes(b"PK fake")
+    captured = []
+
+    class FakeResp:
+        status_code = 200
+        text = '{"id": "MEDIA1"}'
+        def json(self): return {"id": "MEDIA1"}
+
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, **kw):
+            captured.append((url, kw))
+            return FakeResp()
+
+    monkeypatch.setattr(wa.httpx, "AsyncClient", FakeClient)
+    g = "https://graph.facebook.com/v25.0"
+    assert asyncio.run(wa.upload_media("t", "PID", f, graph_url=g)) == "MEDIA1"
+    url, kw = captured[0]
+    assert url == f"{g}/PID/media"
+    assert kw["data"] == {"messaging_product": "whatsapp", "type": wa.XLSX_MIME}
+    assert kw["files"]["file"][0] == "trips-car-2026.xlsx"
+    assert asyncio.run(wa.send_document("t", "PID", "316", "MEDIA1", "trips-car-2026.xlsx",
+                                        caption="cap", graph_url=g))
+    url, kw = captured[1]
+    assert url == f"{g}/PID/messages"
+    assert kw["json"]["type"] == "document"
+    assert kw["json"]["document"] == {"id": "MEDIA1", "filename": "trips-car-2026.xlsx", "caption": "cap"}
+    assert not asyncio.run(wa.send_document("t", "PID", "316", "", "x.xlsx"))
+
+
+@pytest.fixture
+def export_client(reaction_client, monkeypatch):
+    client, sent = reaction_client
+    import rittenregistratie.main as main
+    sent["uploads"] = []
+    sent["documents"] = []
+
+    async def fake_upload(token, pid, path, mime=None, graph_url=""):
+        sent["uploads"].append(str(path))
+        return "MEDIA-1"
+
+    async def fake_document(token, pid, to, media_id, filename, caption="", graph_url=""):
+        sent["documents"].append((to, media_id, filename, caption))
+        return True
+
+    monkeypatch.setattr(main.whatsapp, "upload_media", fake_upload)
+    monkeypatch.setattr(main.whatsapp, "send_document", fake_document)
+    return client, sent
+
+
+def test_excel_command_sends_document(export_client, tmp_path):
+    client, sent = export_client
+    client.post("/webhook", json=_msg_with_id("140 Office", "wamid.T1"))
+    resp = client.post("/webhook", json=_msg_with_id("excel", "wamid.X"))
+    assert resp.status_code == 200
+    # hourglass ack on the command, then the file (TestClient runs background tasks).
+    assert ("31600000000", "wamid.X", "\u23F3") in sent["reactions"]
+    assert len(sent["documents"]) == 1
+    to, media_id, filename, caption = sent["documents"][0]
+    assert (to, media_id) == ("31600000000", "MEDIA-1")
+    assert filename.startswith("trips-car-") and filename.endswith(".xlsx")
+    assert "1 trips" in caption
+    assert sent["uploads"][0].endswith(f"exports/{filename}")
+    # No per-trip spreadsheet was ever written to data/.
+    assert [p.name for p in (tmp_path / "data").glob("*.xlsx")] == []
+
+
+def test_excel_command_reports_missing_year_and_bad_args(export_client):
+    client, sent = export_client
+    client.post("/webhook", json=_msg_with_id("excel 2019", "wamid.X"))
+    assert sent["documents"] == []
+    assert any("Export 2019 failed" in t and "No trips" in t for _, t in sent["texts"])
+    client.post("/webhook", json=_msg_with_id("excel othercar", "wamid.Y"))
+    assert any("Could not export" in t and "Only admins" in t for _, t in sent["texts"])
