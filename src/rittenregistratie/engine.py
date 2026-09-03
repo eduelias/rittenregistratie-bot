@@ -10,6 +10,7 @@ PrivateCapPlugin, whose default only reports a message.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import List
 
@@ -18,11 +19,12 @@ from .config import Settings, load_yaml, save_location
 from .excel_writer import ExcelWriter
 from .models import (
     ParsedMessage,
+    Reply,
     Trip,
     TripSource,
     TripType,
 )
-from .parser import parse_message
+from .parser import ParseError, parse_message
 from .plugins import registry
 from .routes import RouteBook
 from .state import State, StateStore
@@ -37,16 +39,16 @@ class UnknownCarError(EngineError):
     """Raised when a sender number is not associated with any car."""
 
 
+# Replies (case-insensitive) that drop a trip waiting for an address.
+_CANCEL_WORDS = frozenset({"cancel", "/cancel", "skip", "stop", "annuleer"})
+_HAS_LETTER_RE = re.compile(r"[^\W\d_]")
+
+
 class Engine:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.excel_dir = settings.data_dir
-        self.routebook = RouteBook(
-            load_yaml(settings.locations_file),
-            load_yaml(settings.routes_file),
-        )
-        self._locations = load_yaml(settings.locations_file)
-        self._routes = load_yaml(settings.routes_file)
+        self.routebook = self._load_routebook()
         self.cars = CarRegistry(
             load_yaml(settings.cars_file),
             fallback_seed_address=settings.seed_address,
@@ -71,6 +73,14 @@ class Engine:
             self.cap_plugin_override = registry.get_private_cap_plugin(
                 settings.private_cap_plugin_override
             )()
+
+    def _load_routebook(self) -> RouteBook:
+        """Seed locations from config, then learned locations from data/."""
+        return RouteBook(
+            load_yaml(self.settings.locations_file),
+            load_yaml(self.settings.routes_file),
+            load_yaml(self.settings.learned_locations_file),
+        )
 
     @staticmethod
     def _instantiate_trajectory(traj_cls, api_key: str):
@@ -240,7 +250,9 @@ class Engine:
         # If we are waiting for an address for a previously-parsed trip, this
         # text message supplies it.
         if state.pending:
-            return self._resolve_pending_with_text(car, store, state, text)
+            return self._resolve_pending_with_text(
+                car, store, state, text, sender, now
+            )
 
         parsed: ParsedMessage = parse_message(text)
 
@@ -263,10 +275,11 @@ class Engine:
                 "raw": parsed.raw,
             }
             store.save(state)
-            return (
+            return Reply(
                 f"I don't have an address for '{parsed.destination}'.\n"
-                "Please reply with the full address, or share the location "
-                "(WhatsApp attach \u2192 Location) and I'll extract it."
+                "Please reply with the full address, the name of a known "
+                "location, or share the location (WhatsApp attach \u2192 "
+                "Location). Send 'cancel' to drop this trip."
             )
 
         return self._commit_trip(
@@ -289,7 +302,7 @@ class Engine:
         state = store.seed_if_empty(car.seed_address, car.seed_odometer)
 
         if not state.pending:
-            return (
+            return Reply(
                 "Thanks, but I wasn't waiting for a location. Send "
                 "<odometer> <destination> first."
             )
@@ -302,14 +315,58 @@ class Engine:
         return self._save_location_and_commit(car, store, state, now, resolved)
 
     def _resolve_pending_with_text(
-        self, car: Car, store: StateStore, state: State, text: str
+        self, car: Car, store: StateStore, state: State, text: str,
+        sender: str, now: datetime,
     ) -> str:
-        address = (text or "").strip()
-        if not address:
-            return "Please reply with the address, or share the location."
-        return self._save_location_and_commit(
-            car, store, state, datetime.now(), address
-        )
+        """Interpret a text received while a trip waits for an address.
+
+        The reply may be: an address (learned and used), the name of a known
+        location (its address is reused), 'cancel' (the pending trip is
+        dropped), or a brand-new trip like ``20672 spg`` (the pending trip is
+        dropped and the new one is processed, so a trip is never silently
+        recorded with an odometer reading as its address).
+        """
+        answer = (text or "").strip()
+        pending = state.pending or {}
+        destination = pending.get("destination", "")
+        if not answer:
+            return Reply("Please reply with the address, or share the location.")
+
+        if answer.lower() in _CANCEL_WORDS:
+            state.pending = None
+            store.save(state)
+            return Reply(
+                f"Cancelled: the trip to '{destination}' (odometer "
+                f"{pending.get('end_odo')}) was not logged."
+            )
+
+        try:
+            as_trip = parse_message(answer)
+        except ParseError:
+            as_trip = None
+        if as_trip is not None and as_trip.end_odo >= state.last_odometer:
+            state.pending = None
+            store.save(state)
+            inner = self.handle_text(answer, sender, now)
+            return Reply(
+                f"Dropped the pending trip to '{destination}' (odometer "
+                f"{pending.get('end_odo')}): no address was given, so it was "
+                "not logged.\n" + inner,
+                logged=getattr(inner, "logged", False),
+                notice=True,
+            )
+
+        if self.routebook.is_known(answer):
+            address = self.routebook.address_for(answer)
+        elif not _HAS_LETTER_RE.search(answer):
+            return Reply(
+                "That doesn't look like an address. Reply with a street address "
+                "(e.g. 'Waldorpstraat 3, Den Haag') or the name of a known "
+                "location, share the location, or send 'cancel'."
+            )
+        else:
+            address = answer
+        return self._save_location_and_commit(car, store, state, now, address)
 
     def _save_location_and_commit(
         self, car: Car, store: StateStore, state: State,
@@ -317,12 +374,10 @@ class Engine:
     ) -> str:
         pending = state.pending or {}
         destination = pending.get("destination", "")
-        # Learn the location so it is not asked again.
-        save_location(self.settings.locations_file, destination, address)
-        self.routebook = RouteBook(
-            load_yaml(self.settings.locations_file),
-            load_yaml(self.settings.routes_file),
-        )
+        # Learn the location so it is not asked again. Learned entries live in
+        # data/, separate from the committed seed config.
+        save_location(self.settings.learned_locations_file, destination, address)
+        self.routebook = self._load_routebook()
         state.pending = None
         store.save(state)
         return self._commit_trip(
@@ -432,4 +487,11 @@ class Engine:
             lines.append(f"Route recorded (deviation): {route_str}")
         if cap and cap.message:
             lines.append(cap.message)
-        return "\n".join(lines)
+        return Reply(
+            "\n".join(lines),
+            logged=True,
+            notice=bool(
+                learned or route_str
+                or (cap and cap.message and getattr(cap, "important", False))
+            ),
+        )

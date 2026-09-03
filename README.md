@@ -34,8 +34,15 @@ comfortably on a Raspberry Pi.
   address, route, private/business, per year and per car.
 - **Multi-car** — sender phone number selects the car; separate logs per car.
 - **Private/business** classification with the 500 km/year cap awareness.
-- **Ask-for-address** — unknown destinations prompt for an address or a shared
-  location (reverse-geocoded).
+- **Ask-for-address** — unknown destinations prompt for an address, the name of
+  a known location, or a shared location (reverse-geocoded). Reply `cancel` to
+  drop the trip. Learned addresses are kept in `data/locations-learned.yaml`.
+- **Case-insensitive names with aliases** — `Home`, `home` and `HOME` are one
+  place; a location whose address is another location's name resolves to that
+  address, so every alias yields one canonical address string.
+- **Thumbs-up acknowledgement** — set `RIT_REPLY_MODE=reaction` and the bot
+  reacts 👍 to your message instead of replying, sending text only when it
+  needs something or has extra information.
 - **Plugin system** — swap odometer source, trajectory provider and private-cap
   reporting via entry points; the core stays a faithful recorder.
 - **Self-hosted** — FastAPI + WhatsApp Cloud API, exposed via Cloudflare Tunnel,
@@ -59,6 +66,35 @@ Send a WhatsApp message:
 
 Origin and start odometer are taken from the previous trip (seeded once via
 config for the very first trip).
+
+### Unknown destinations
+
+If the destination is not a known location the bot asks for its address and
+waits. Your next message may be:
+
+- a street address, e.g. `Waldorpstraat 3, Den Haag` — learned and used;
+- the name of a known location, e.g. `office` — its address is reused;
+- a shared WhatsApp location — reverse-geocoded when a Google key is set;
+- `cancel` — the pending trip is dropped and nothing is logged;
+- a new trip, e.g. `20672 spg` — the pending trip is dropped (it had no
+  address) and the new one is processed. A reply that looks like an odometer
+  reading is never stored as an address.
+
+Learned addresses are written to `data/locations-learned.yaml`, so the
+committed `config/locations.yaml` stays a clean seed file. Names are matched
+case-insensitively and an address that is itself a known name is followed.
+
+### Replies
+
+`RIT_REPLY_MODE` controls how a logged trip is acknowledged:
+
+| Mode       | Logged trip                         | Prompts, errors, `pong` |
+|------------|-------------------------------------|-------------------------|
+| `text`     | summary message (default)           | text                    |
+| `reaction` | 👍 on your message; text only if there is extra info (learned address, route deviation, cap warning) | text |
+| `both`     | 👍 and the summary message          | text                    |
+
+If a reaction cannot be delivered the bot falls back to the text summary.
 
 ## Multi-car (identify car by phone number)
 

@@ -96,6 +96,7 @@ async def webhook(request: Request) -> Response:
         return Response(status_code=200, content="ok")
 
     sender = msg["from"]
+    message_id = msg.get("id")
     location = msg.get("location")
     text = msg.get("text")
 
@@ -173,20 +174,47 @@ async def webhook(request: Request) -> Response:
             log.exception("Unexpected error handling message")
             reply = "Internal error while logging the trip."
 
-    await _send_all(sender, reply, extra_notify)
+    await _send_all(sender, reply, extra_notify, message_id=message_id)
     return Response(status_code=200, content="ok")
 
 
-async def _send_all(sender: str, reply: str, extra: list) -> None:
-    """Send the main reply plus any extra notifications."""
+async def _send_all(
+    sender: str, reply: str, extra: list, message_id: str | None = None,
+) -> None:
+    """Acknowledge the sender, then send any extra notifications.
+
+    RIT_REPLY_MODE decides the acknowledgement for a logged trip:
+    - ``text``: the summary message (default).
+    - ``reaction``: a thumbs-up on the sender's own message; text is sent only
+      when the bot needs something (address prompt, error) or has extra
+      information (learned address, route deviation, cap warning).
+    - ``both``: reaction and text.
+    If the reaction cannot be sent, the text is sent instead so every message
+    gets an acknowledgement.
+    """
     graph_url = f"https://graph.facebook.com/{_settings.whatsapp_graph_version}"
-    delivered = await whatsapp.send_message(
-        _settings.whatsapp_token, _settings.whatsapp_phone_number_id,
-        sender, reply, graph_url=graph_url,
-    )
-    if not delivered:
-        # Privacy: do not write message/reply content to the journal.
-        log.warning("Reply not delivered to %s (see WhatsApp error above).", sender)
+    mode = (_settings.reply_mode or "text").strip().lower()
+    logged = bool(getattr(reply, "logged", False))
+    notice = bool(getattr(reply, "notice", False))
+
+    react = mode in ("reaction", "both") and logged and bool(message_id)
+    send_text = mode != "reaction" or not react or notice
+    if react:
+        reacted = await whatsapp.send_reaction(
+            _settings.whatsapp_token, _settings.whatsapp_phone_number_id,
+            sender, message_id, graph_url=graph_url,
+        )
+        if not reacted:
+            log.warning("Reaction not delivered to %s; sending text instead.", sender)
+            send_text = True
+    if send_text:
+        delivered = await whatsapp.send_message(
+            _settings.whatsapp_token, _settings.whatsapp_phone_number_id,
+            sender, reply, graph_url=graph_url,
+        )
+        if not delivered:
+            # Privacy: do not write message/reply content to the journal.
+            log.warning("Reply not delivered to %s (see WhatsApp error above).", sender)
     for to, body in extra:
         await whatsapp.send_message(
             _settings.whatsapp_token, _settings.whatsapp_phone_number_id,
