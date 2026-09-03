@@ -207,8 +207,10 @@ Every trip is appended, exactly as you reported it, to the **append-only**
 ledger at `data/raw-ledger-<car>.jsonl` (one JSON object per line). This ledger
 is never modified after writing and is the single source of truth.
 
-Besides the WhatsApp `excel` command, a pristine spreadsheet (bypassing all
-plugins) can be rebuilt from the command line:
+Besides the WhatsApp `excel` command, the same export pipeline can be run from
+the command line (`python -m rittenregistratie.export <car> [year]`, see
+`docs/plugins.md`), and a pristine spreadsheet bypassing all plugins can be
+rebuilt with:
 
 ```bash
 python -m rittenregistratie.rebuild <car_id> [--out ./restore]
