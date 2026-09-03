@@ -30,9 +30,9 @@ def verify_signature(app_secret: str, payload: bytes, header: str) -> bool:
 def extract_message(body: dict) -> Optional[dict]:
     """Return a dict describing the first message.
 
-    Keys: ``from``; and one of ``text`` (str) or ``location`` ({latitude,
-    longitude, address?, name?}). For non-text/non-location types, ``text`` is
-    None.
+    Keys: ``from``, ``id`` (the WhatsApp message id, used to react to the
+    message); and one of ``text`` (str) or ``location`` ({latitude, longitude,
+    address?, name?}). For non-text/non-location types, ``text`` is None.
     """
     try:
         change = body["entry"][0]["changes"][0]["value"]
@@ -41,13 +41,15 @@ def extract_message(body: dict) -> Optional[dict]:
             return None
         msg = messages[0]
         sender = msg.get("from")
+        msg_id = msg.get("id")
         mtype = msg.get("type")
         if mtype == "text":
-            return {"from": sender, "text": msg["text"]["body"]}
+            return {"from": sender, "id": msg_id, "text": msg["text"]["body"]}
         if mtype == "location":
             loc = msg.get("location", {})
             return {
                 "from": sender,
+                "id": msg_id,
                 "text": None,
                 "location": {
                     "latitude": loc.get("latitude"),
@@ -56,7 +58,7 @@ def extract_message(body: dict) -> Optional[dict]:
                     "name": loc.get("name"),
                 },
             }
-        return {"from": sender, "text": None}
+        return {"from": sender, "id": msg_id, "text": None}
     except (KeyError, IndexError, TypeError):
         return None
 
@@ -107,11 +109,10 @@ def reverse_geocode(lat, lon, api_key: str = "") -> str:
     return ""
 
 
-async def send_message(
-    token: str, phone_number_id: str, to: str, text: str,
-    graph_url: str = GRAPH_URL,
+async def _post_message(
+    token: str, phone_number_id: str, payload: dict, graph_url: str, what: str,
 ) -> bool:
-    """Send a WhatsApp text reply. Returns True on success, False otherwise.
+    """POST one message payload to the Cloud API. Returns True on success.
 
     Delivery failures (e.g. Meta error 131037 display-name approval, or the
     recipient not being on a test number's allow-list) are logged so they are
@@ -119,24 +120,17 @@ async def send_message(
     """
     if not token or not phone_number_id:
         return False
+    to = payload.get("to", "?")
     url = f"{graph_url}/{phone_number_id}/messages"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
-                url,
-                headers={"Authorization": f"Bearer {token}"},
-                json={
-                    "messaging_product": "whatsapp",
-                    "to": to,
-                    "type": "text",
-                    "text": {"body": text},
-                },
+                url, headers={"Authorization": f"Bearer {token}"}, json=payload,
             )
         if resp.status_code >= 400:
             body = resp.text
             log.warning(
-                "WhatsApp reply to %s failed (%s): %s",
-                to, resp.status_code, body,
+                "WhatsApp %s to %s failed (%s): %s", what, to, resp.status_code, body,
             )
             if "131037" in body or "131047" in body:
                 log.warning(
@@ -148,5 +142,47 @@ async def send_message(
             return False
         return True
     except httpx.HTTPError as exc:
-        log.warning("WhatsApp reply to %s errored: %s", to, exc)
+        log.warning("WhatsApp %s to %s errored: %s", what, to, exc)
         return False
+
+
+async def send_message(
+    token: str, phone_number_id: str, to: str, text: str,
+    graph_url: str = GRAPH_URL,
+) -> bool:
+    """Send a WhatsApp text reply. Returns True on success, False otherwise."""
+    return await _post_message(
+        token, phone_number_id,
+        {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "text",
+            "text": {"body": text},
+        },
+        graph_url, "reply",
+    )
+
+
+async def send_reaction(
+    token: str, phone_number_id: str, to: str, message_id: str,
+    emoji: str = "\U0001F44D", graph_url: str = GRAPH_URL,
+) -> bool:
+    """React to the user's message (default thumbs-up). Returns True on success.
+
+    ``message_id`` is the ``id`` of the inbound message from the webhook. Meta
+    only delivers reactions to messages under 30 days old and emits just a
+    'sent' status for them. Pass ``emoji=""`` to remove a reaction.
+    """
+    if not message_id:
+        return False
+    return await _post_message(
+        token, phone_number_id,
+        {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "reaction",
+            "reaction": {"message_id": message_id, "emoji": emoji},
+        },
+        graph_url, "reaction",
+    )

@@ -25,7 +25,8 @@ class WarnPlugin(PrivateCapPlugin):
                 message=(
                     f"WARNING: private {private_total_km} km exceeds the "
                     f"{cap_km} km cap by {over} km for {year}."
-                )
+                ),
+                important=True,
             )
         remaining = cap_km - private_total_km
         return CapAction(

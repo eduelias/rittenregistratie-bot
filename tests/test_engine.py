@@ -112,3 +112,84 @@ def test_private_unknown_destination_not_prompted(settings):
     reply = eng.handle_text("145030 beach private", "31612345678", now=datetime(2026, 1, 5, 9, 0))
     assert "don't have an address" not in reply.lower()
     assert "private" in reply.lower()
+
+
+# --- address hardening -------------------------------------------------------
+
+def test_destination_names_are_case_insensitive(settings):
+    eng = Engine(settings)
+    reply = eng.handle_text("145040 office", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    assert "don't have an address" not in reply.lower()
+    wb = load_workbook(settings.data_dir / "trips-default_car-2026.xlsx")
+    rows = list(wb.active.iter_rows(values_only=True))
+    assert rows[-1][4] == "B St, Amsterdam"
+
+
+def test_learned_address_goes_to_data_not_config(settings):
+    eng = Engine(settings)
+    eng.handle_text("145050 Gym", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    eng.handle_text("Sportlaan 1, Almere", "31612345678", now=datetime(2026, 1, 5, 9, 5))
+    config_text = (settings.config_dir / "locations.yaml").read_text()
+    assert "Sportlaan" not in config_text
+    learned = settings.learned_locations_file.read_text()
+    assert "gym:" in learned and "Sportlaan 1, Almere" in learned
+    # Survives a restart (new Engine reads the learned file).
+    eng2 = Engine(settings)
+    reply = eng2.handle_text("145090 GYM", "31612345678", now=datetime(2026, 1, 6, 9, 0))
+    assert "don't have an address" not in reply.lower()
+
+
+def test_new_trip_while_pending_is_not_swallowed_as_address(settings):
+    eng = Engine(settings)
+    eng.handle_text("145050 shr and back home", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    reply = eng.handle_text("145140 Office", "31612345678", now=datetime(2026, 1, 5, 9, 5))
+    assert "dropped the pending trip" in reply.lower()
+    assert "140 km" in reply  # pending dropped, so the trip starts at the seed 145000
+    wb = load_workbook(settings.data_dir / "trips-default_car-2026.xlsx")
+    rows = list(wb.active.iter_rows(values_only=True))
+    assert len(rows) == 2  # header + the Office trip only
+    assert rows[1][1] == 145000 and rows[1][2] == 145140
+    assert rows[1][4] == "B St, Amsterdam"
+    # No bogus location learned.
+    assert not settings.learned_locations_file.exists() or \
+        "shr and back home" not in settings.learned_locations_file.read_text()
+
+
+def test_cancel_drops_pending_trip(settings):
+    eng = Engine(settings)
+    eng.handle_text("145050 Gym", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    reply = eng.handle_text("cancel", "31612345678", now=datetime(2026, 1, 5, 9, 1))
+    assert "cancelled" in reply.lower()
+    assert not (settings.data_dir / "trips-default_car-2026.xlsx").exists()
+    # Next message is parsed as a normal trip again.
+    reply2 = eng.handle_text("145040 Office", "31612345678", now=datetime(2026, 1, 5, 9, 2))
+    assert "40 km" in reply2
+
+
+def test_known_location_name_as_address_reuses_its_address(settings):
+    eng = Engine(settings)
+    eng.handle_text("145050 hq", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    reply = eng.handle_text("office", "31612345678", now=datetime(2026, 1, 5, 9, 1))
+    assert "B St, Amsterdam" in reply
+    wb = load_workbook(settings.data_dir / "trips-default_car-2026.xlsx")
+    rows = list(wb.active.iter_rows(values_only=True))
+    assert rows[-1][4] == "B St, Amsterdam"  # not the literal 'office'
+
+
+def test_numeric_only_reply_rejected_as_address(settings):
+    eng = Engine(settings)
+    eng.handle_text("145050 Gym", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    # Lower than the last odometer, so not a new trip; and no letters.
+    reply = eng.handle_text("1234 56", "31612345678", now=datetime(2026, 1, 5, 9, 1))
+    assert "doesn't look like an address" in reply.lower()
+    assert not (settings.data_dir / "trips-default_car-2026.xlsx").exists()
+
+
+def test_reply_flags(settings):
+    eng = Engine(settings)
+    prompt = eng.handle_text("145050 Gym", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    assert prompt.logged is False
+    learned = eng.handle_text("Sportlaan 1, Almere", "31612345678", now=datetime(2026, 1, 5, 9, 5))
+    assert learned.logged is True and learned.notice is True
+    plain = eng.handle_text("145090 Gym", "31612345678", now=datetime(2026, 1, 6, 9, 0))
+    assert plain.logged is True and plain.notice is False

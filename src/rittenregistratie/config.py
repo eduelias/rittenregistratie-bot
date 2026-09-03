@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     onboarding_enabled: bool = True
     # Maximum number of registered users/cars allowed.
     max_users: int = 5
+    # How to acknowledge a logged trip: "text" (summary message), "reaction"
+    # (thumbs-up on your message; text only when the bot needs something or has
+    # extra info) or "both".
+    reply_mode: str = "text"
 
     # Trajectory
     google_maps_api_key: str = ""
@@ -60,6 +64,11 @@ class Settings(BaseSettings):
     @property
     def routes_file(self) -> Path:
         return self.config_dir / "routes.yaml"
+
+    @property
+    def learned_locations_file(self) -> Path:
+        """Addresses learned from chat replies. Kept out of the committed config."""
+        return self.data_dir / "locations-learned.yaml"
 
     @property
     def cars_file(self) -> Path:
@@ -96,9 +105,14 @@ def load_yaml(path: Path) -> dict:
 
 
 def save_location(path: Path, name: str, address: str) -> None:
-    """Add or update a known location in a locations.yaml file."""
+    """Add or update a known location in a locations.yaml file.
+
+    The name is stored normalized (lower-case, single spaces) so lookups are
+    case-insensitive and one place never gets two entries.
+    """
+    from .routes import normalize_name
     data = load_yaml(path)
-    data[name] = {"address": address}
+    data[normalize_name(name)] = {"address": address}
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
         yaml.safe_dump(data, fh, sort_keys=True, allow_unicode=True)

@@ -70,9 +70,34 @@ class Trip:
 @dataclass
 class CapAction:
     """Result of a PrivateCapPlugin evaluation. The core's default only reports a
-    message (e.g. remaining private km); it never modifies recorded trips."""
+    message (e.g. remaining private km); it never modifies recorded trips.
+
+    ``important`` marks a message the user must see even when the bot only
+    acknowledges trips with a reaction (e.g. the cap has been exceeded).
+    """
 
     message: str
+    important: bool = False
+
+
+class Reply(str):
+    """A user-facing reply. Behaves exactly like ``str``.
+
+    Carries two flags for the transport layer: ``logged`` (a trip was written,
+    so a thumbs-up reaction is an adequate acknowledgement) and ``notice``
+    (the text holds information beyond a plain confirmation, e.g. a learned
+    address, a route deviation or a cap warning, and should be sent even in
+    reaction mode).
+    """
+
+    logged: bool
+    notice: bool
+
+    def __new__(cls, text: str = "", *, logged: bool = False, notice: bool = False):
+        obj = super().__new__(cls, text)
+        obj.logged = logged
+        obj.notice = notice
+        return obj
 
 
 @dataclass
