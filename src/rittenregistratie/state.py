@@ -19,6 +19,9 @@ class State:
     private_km: Dict[str, int] = field(default_factory=dict)
     # a trip awaiting an address for an unknown, non-private destination
     pending: Optional[dict] = None
+    # the last automatically logged trip whose end place had no name yet:
+    # {"address", "lat", "lon"}; 'name <place>' turns it into a known location
+    last_unnamed: Optional[dict] = None
 
     def private_ytd(self, year: int) -> int:
         return self.private_km.get(str(year), 0)

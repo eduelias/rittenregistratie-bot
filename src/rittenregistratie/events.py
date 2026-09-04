@@ -25,6 +25,16 @@ Events emitted by the core
 
     The return value is ignored.
 
+``hook.<plugin>``
+    Emitted when something POSTs to ``/hooks/<plugin>/<car_id>`` (secret
+    header ``X-Hook-Secret`` = ``RIT_HOOK_SECRET``). Payload::
+
+        {"car_id": str, "plugin": str, "body": <parsed JSON>, "headers": {x-*}}
+
+    The handler returns a :class:`rittenregistratie.models.VehicleTripReport`
+    to have the core log a trip for that car, or ``None`` to ignore the post.
+    A car only receives these when the plugin is in its ``event_plugins``.
+
 Registering a plugin
 --------------------
 Expose a callable under the entry-point group ``rittenregistratie.events``.
@@ -48,6 +58,13 @@ EXPORT_PRE_GENERATE = "export.pre_generate"
 EXPORT_POST_GENERATE = "export.post_generate"
 
 ENTRY_POINT_GROUP = "rittenregistratie.events"
+
+HOOK_EVENT_PREFIX = "hook."
+
+
+def hook_event(plugin: str) -> str:
+    """Event name for inbound posts to ``/hooks/<plugin>/<car_id>``."""
+    return HOOK_EVENT_PREFIX + plugin.strip().lower()
 
 Handler = Callable[[Any], Any]
 
@@ -93,6 +110,15 @@ class PostGeneratePayload(TypedDict):
     year: int
     path: str
     rows: int
+
+
+class HookPayload(TypedDict):
+    """Payload of ``hook.<plugin>``; return a VehicleTripReport or None."""
+
+    car_id: str
+    plugin: str
+    body: Any
+    headers: Dict[str, str]
 
 
 def with_trips(payload: PreGeneratePayload, trips: List[TripRow]) -> PreGeneratePayload:

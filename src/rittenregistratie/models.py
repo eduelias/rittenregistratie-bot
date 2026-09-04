@@ -80,6 +80,30 @@ class CapAction:
     important: bool = False
 
 
+@dataclass
+class VehicleTripReport:
+    """A finished trip as reported by a vehicle-telemetry plugin.
+
+    Produced by a ``hook.<plugin>`` handler from whatever the source posts
+    (a car cloud, Home Assistant, an OBD dongle). The core turns it into a
+    ledger row exactly like a typed message would: ``end_odo`` is the reading,
+    the place comes from ``place``/``zone`` if they name a known location,
+    else from the nearest known location to the coordinates, else from
+    reverse geocoding. Nothing here is guessed by the core.
+    """
+
+    end_odo: int
+    ended_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    start_odo: Optional[int] = None       # reading at ignition on, if the source knows it
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    zone: str = ""                         # geofence name, e.g. "home"
+    place: str = ""                        # a place name, if the source has one
+    source: str = ""                       # plugin name, for the note
+    raw: Optional[dict] = None
+
+
 class Reply(str):
     """A user-facing reply. Behaves exactly like ``str``.
 

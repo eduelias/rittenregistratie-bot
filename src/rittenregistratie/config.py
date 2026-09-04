@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     # every installed plugin, "" loads none, or a comma-separated list of names.
     event_plugins: str = "*"
 
+    # Vehicle-telemetry hooks (POST /hooks/<plugin>/<car_id>): shared secret
+    # sent as X-Hook-Secret. Empty disables the endpoint.
+    hook_secret: str = ""
+    # How close (metres) a trip's end position must be to a known location's
+    # coordinates to count as that place (per-location radius_m overrides).
+    place_radius_m: int = 300
+
     # Compliance
     private_cap_km: int = 500
 
@@ -125,15 +132,18 @@ def load_yaml(path: Path) -> dict:
         return yaml.safe_load(fh) or {}
 
 
-def save_location(path: Path, name: str, address: str) -> None:
+def save_location(path: Path, name: str, address: str, **extra) -> None:
     """Add or update a known location in a locations.yaml file.
 
     The name is stored normalized (lower-case, single spaces) so lookups are
-    case-insensitive and one place never gets two entries.
+    case-insensitive and one place never gets two entries. ``extra`` may carry
+    ``lat``/``lon``/``radius_m``/``private`` for vehicle-telemetry matching.
     """
     from .routes import normalize_name
     data = load_yaml(path)
-    data[normalize_name(name)] = {"address": address}
+    entry = {"address": address}
+    entry.update({k: v for k, v in extra.items() if v is not None})
+    data[normalize_name(name)] = entry
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
         yaml.safe_dump(data, fh, sort_keys=True, allow_unicode=True)
