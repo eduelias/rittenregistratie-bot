@@ -1,26 +1,45 @@
 Home:
-  address: "Home - Buitenhof 128, 1354 GT Almere"
+  address: Home - Buitenhof 128, 1354 GT Almere
+  lat: 52.34159
+  lon: 5.21706
 SBP:
-  address: "SBP - Boeing Avenue 271, 1119 PD Schiphol-Rijk"
-shr:
-  address: "SBP - Boeing Avenue 271, 1119 PD Schiphol-Rijk"
-hague:
-  address: "Waldorpstraat 3, 2521 CA Den Haag"
-spg:
-  address: "Waldorpstraat 3, 2521 CA Den Haag"
-pnl:
-  address: "Waldorpstraat 3, 2521 CA Den Haag"
-rtm:
-  address: "Oostmaaslaan 53-71, Rotterdam"
-rotterdam:
-  address: "Oostmaaslaan 53-71, Rotterdam"
-raymond:
-  address: "Gerberastraat 48, 1338 VD Almere"
+  address: SBP - Boeing Avenue 271, 1119 PD Schiphol-Rijk
 axe:
-  address: "Almere Underground - Sallandsekant 128, 1348 AN Almere"
-tijn:
-  address: "Tijn Akersloot - Strandafgang Paulus Loot 1B, 2042 AD Zandvoort"
-service:
-  address: "Service - De Huchtstraat 10, Almere"
+  address: Almere Underground - Sallandsekant 128, 1348 AN Almere
+  lat: 52.36684
+  lon: 5.27259
+hague:
+  address: Waldorpstraat 3, 2521 CA Den Haag
+pnl:
+  address: Waldorpstraat 3, 2521 CA Den Haag
 rai:
-  address: "RAI - Europaplein 24, Amsterdam"
+  address: RAI - Europaplein 24, Amsterdam
+  lat: 52.34123
+  lon: 4.88991
+raymond:
+  address: Gerberastraat 48, 1338 VD Almere
+  lat: 52.38784
+  lon: 5.28406
+rotterdam:
+  address: Oostmaaslaan 53-71, Rotterdam
+rtm:
+  address: Oostmaaslaan 53-71, Rotterdam
+  lat: 51.91765
+  lon: 4.51519
+service:
+  address: Service - De Huchtstraat 10, Almere
+  lat: 52.35929
+  lon: 5.2597
+shr:
+  address: SBP - Boeing Avenue 271, 1119 PD Schiphol-Rijk
+  lat: 52.27497
+  lon: 4.75081
+spg:
+  address: Waldorpstraat 3, 2521 CA Den Haag
+  lat: 52.06666
+  lon: 4.31775
+  radius_m: 700
+tijn:
+  address: Tijn Akersloot - Strandafgang Paulus Loot 1B, 2042 AD Zandvoort
+  lat: 52.36255
+  lon: 4.51787
