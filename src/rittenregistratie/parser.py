@@ -14,6 +14,9 @@ Rules:
 - First whitespace-delimited token must be the integer end odometer.
 - The word ``private`` or tag ``#private`` (case-insensitive) anywhere marks
   the trip as private and is stripped from the destination.
+- A standalone ``*`` is a marker the user may put on a message; it is kept in
+  the stored raw message but stripped from the destination, so it cannot stop
+  a known place from being recognised. The core attaches no meaning to it.
 - Text after ``--`` (or ``|``) is treated as a free-text note.
 """
 from __future__ import annotations
@@ -23,6 +26,9 @@ import re
 from .models import ParsedMessage
 
 _PRIVATE_RE = re.compile(r"(?<!\w)#?private(?!\w)", re.IGNORECASE)
+# A bare '*' token: a marker for the user (and for plugins reading raw_message),
+# never part of the place name.
+_MARKER_RE = re.compile(r"(?:(?<=\s)|^)\*(?=\s|$)")
 _NOTE_SPLIT_RE = re.compile(r"\s*(?:--|\|)\s*")
 
 
@@ -54,7 +60,7 @@ def parse_message(text: str) -> ParsedMessage:
 
     remainder = " ".join(tokens[1:])
     is_private = bool(_PRIVATE_RE.search(remainder))
-    destination = _PRIVATE_RE.sub("", remainder).strip()
+    destination = _MARKER_RE.sub(" ", _PRIVATE_RE.sub("", remainder)).strip()
     # tidy up leftovers: empty brackets/parens and stray punctuation
     destination = re.sub(r"[\(\[\{]\s*[\)\]\}]", "", destination)
     destination = re.sub(r"\s{2,}", " ", destination).strip(" -()[]{}")
