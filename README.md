@@ -38,7 +38,9 @@ comfortably on a Raspberry Pi.
 - **Event bus for plugins** — the core emits `export.pre_generate` and
   `export.post_generate`; a plugin may transform the data before the workbook
   is written. Without plugins the export is exactly what you typed.
-- **Multi-car** — sender phone number selects the car; separate logs per car.
+- **Multi-car, many-to-many** — several people can report for one car, and one
+  person can drive several cars (`car <id>` picks the active one, or prefix a
+  message with the car id). Separate ledger, state and plugins per car.
 - **Private/business** classification with the 500 km/year cap awareness.
 - **Ask-for-address** — unknown destinations prompt for an address, the name of
   a known location, or a shared location (reverse-geocoded). Reply `cancel` to
@@ -102,28 +104,42 @@ case-insensitively and an address that is itself a known name is followed.
 
 If a reaction cannot be delivered the bot falls back to the text summary.
 
-## Multi-car (identify car by phone number)
+## Multi-car (phones and cars, many-to-many)
 
-Each WhatsApp sender number is mapped to a car in `config/cars.yaml`. The
-sender's number selects the car, so several people/cars can share one bot:
+Cars live in `config/cars.yaml`. A car lists the phone numbers that may report
+for it, and the same number may appear under several cars:
 
 ```yaml
 default_car:
   label: "Company car"
   seed_address: "Home"
   seed_odometer: 145000
-  phones: ["31612345678"]
+  phones: ["31612345678", "31698765432"]   # two people share this car
+  event_plugins: ["example"]               # optional, per car (see Plugin system)
+  cap_plugin: "warn"                       # optional, per car
 van:
   label: "Delivery van"
   seed_address: "Depot"
   seed_odometer: 302000
-  phones: ["31698765432", "31611112222"]
+  phones: ["31612345678"]                  # same person, second car
 ```
 
-- Only numbers listed in `cars.yaml` are accepted; unknown numbers are ignored.
-- Each car has its **own** state file (`state-<car>.json`) and Excel logs
-  (`trips-<car>-<year>.xlsx`), keeping every administration separate.
-- A phone number may belong to exactly one car.
+- Only numbers listed in `cars.yaml` are accepted; unknown numbers get the
+  onboarding flow (or are ignored when it is disabled).
+- Each car has its **own** ledger (`raw-ledger-<car>.jsonl`) and state
+  (`state-<car>.json`); everyone reporting for a car continues the same
+  odometer chain.
+- A number with **one** car needs nothing extra. A number with **several**
+  cars chooses:
+
+  ```
+  cars                   # list your cars, active one marked
+  car van                # make 'van' the active car (by id or label)
+  van 302050 Depot       # one-off: prefix the message with the car
+  excel van 2025         # export a specific own car
+  ```
+
+  Without a choice the bot asks which car you mean and logs nothing.
 
 ## Onboarding new users
 
@@ -137,10 +153,12 @@ needed.
 
    ```
    pending                                   # list join requests
-   approve <number> <label> <seed_odo> [address]   # register a new user/car
+   approve <number> <label> <seed_odo> [address]   # new car for a number
+   assign <number> <car_id>                  # let a number report for an existing car
+   unassign <number> <car_id>                # undo assign
    deny <number>                             # reject a request
-   list                                      # list registered users
-   remove <number|car_id>                    # remove a user
+   list                                      # cars, numbers and plugins
+   remove <number|car_id>                    # remove a car, or a number from all cars
    help                                      # show admin commands
    ```
 
@@ -222,8 +240,13 @@ Extension points are discovered via setuptools entry points, so other packages
 can add or override behaviour without changing the core. Three select an
 implementation by name; the fourth, `rittenregistratie.events`, lets a package
 subscribe to the events the core emits (today: `export.pre_generate` and
-`export.post_generate`). Select event plugins with `RIT_EVENT_PLUGINS`
-(`*` all installed, empty none, or a list of names).
+`export.post_generate`).
+
+**Plugins are selected per car.** In `cars.yaml`, `event_plugins` (a list of
+entry-point names, `[]` for none) and `cap_plugin` (one name) apply to that car
+only; each car has its own event bus. A car without these keys uses the global
+`RIT_EVENT_PLUGINS` (`*` all installed, empty none, or a list of names) and
+`RIT_PRIVATE_CAP_PLUGIN`.
 
 | Group                        | Default (shipped)      | Purpose                              |
 |------------------------------|------------------------|--------------------------------------|

@@ -100,6 +100,11 @@ class Settings(BaseSettings):
     def onboarding_file(self) -> Path:
         return self.data_dir / "onboarding.json"
 
+    @property
+    def active_car_file(self) -> Path:
+        """Per-phone active car, for phones that drive several cars."""
+        return self.data_dir / "active-car.json"
+
     def admin_list(self) -> list[str]:
         import re
         return [re.sub(r"\D", "", n) for n in self.admin_numbers.split(",") if n.strip()]

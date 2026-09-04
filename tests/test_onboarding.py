@@ -77,12 +77,26 @@ def test_approve_requires_odometer(settings):
     assert "Usage" in reply or "seed odometer" in reply.lower()
 
 
-def test_approve_rejects_duplicate_phone(settings):
+def test_approve_existing_phone_adds_second_car(settings):
     eng = Engine(settings)
-    reply = eng.handle_admin_command(
-        "approve", ["31600000001", "Dup", "500"]
-    )
-    assert "already registered" in reply.lower()
+    reply = eng.handle_admin_command("approve", ["31600000001", "Second", "500"])
+    assert reply.startswith("Approved")
+    assert sorted(c.car_id for c in eng.cars.cars_for("31600000001")) == ["mycar", "second"]
+
+
+def test_assign_and_unassign_shared_car(settings):
+    eng = Engine(settings)
+    eng.register_join_request("31600000009", "hi")
+    reply = eng.handle_admin_command("assign", ["31600000009", "mycar"])
+    assert "now reports for 'mycar'" in reply
+    assert eng.cars.get("mycar").phones == ["31600000001", "31600000009"]
+    assert not eng.onboarding.has("31600000009")  # request resolved by assignment
+    assert "already reports" in eng.handle_admin_command("assign", ["31600000009", "mycar"])
+    assert "Unknown car" in eng.handle_admin_command("assign", ["31600000009", "nope"])
+    reply = eng.handle_admin_command("unassign", ["31600000009", "mycar"])
+    assert "no longer reports" in reply
+    assert eng.cars.get("mycar").phones == ["31600000001"]
+    assert "Usage" in eng.handle_admin_command("assign", ["31600000009"])
 
 
 def test_list_users(settings):
@@ -97,8 +111,16 @@ def test_remove_user(settings):
     eng.handle_admin_command("approve", ["31612345678", "Alice", "45000"])
     assert eng.cars.resolve("31612345678") is not None
     reply = eng.handle_admin_command("remove", ["31612345678"])
-    assert "Removed" in reply
+    assert "Removed car(s) 'alice'" in reply
     assert eng.cars.resolve("31612345678") is None
+
+
+def test_remove_phone_from_shared_car_keeps_car(settings):
+    eng = Engine(settings)
+    eng.handle_admin_command("assign", ["31600000009", "mycar"])
+    reply = eng.handle_admin_command("remove", ["31600000009"])
+    assert "no longer reports for 'mycar'" in reply and "Removed car" not in reply
+    assert eng.cars.get("mycar").phones == ["31600000001"]
 
 
 def test_remove_by_car_id(settings):
@@ -111,7 +133,7 @@ def test_remove_by_car_id(settings):
 def test_remove_unknown(settings):
     eng = Engine(settings)
     reply = eng.handle_admin_command("remove", ["31699999999"])
-    assert "No user found" in reply
+    assert "No car or number found" in reply
 
 
 def test_max_users_enforced(settings):
@@ -147,3 +169,25 @@ def test_no_override_configured_uses_default(settings):
     eng = Engine(settings)  # no override set in fixture
     car = eng.cars.resolve("31600000001")
     assert eng._cap_for_car(car) is eng.cap_plugin
+
+
+def test_per_car_cap_plugin_from_cars_yaml(settings):
+    (settings.config_dir / "cars.yaml").write_text(
+        "a:\n  label: A\n  seed_address: Home\n  seed_odometer: 1\n  phones: ['31600000001']\n"
+        "  cap_plugin: warn\n"
+        "b:\n  label: B\n  seed_address: Home\n  seed_odometer: 1\n  phones: ['31600000002']\n"
+    )
+    eng = Engine(settings)
+    a, b = eng.cars.get("a"), eng.cars.get("b")
+    assert eng._cap_for_car(a) is not eng.cap_plugin          # own instance per named plugin
+    assert eng._cap_for_car(a) is eng._cap_for_car(a)          # cached
+    assert eng._cap_for_car(b) is eng.cap_plugin               # default
+
+
+def test_list_shows_plugins(settings):
+    (settings.config_dir / "cars.yaml").write_text(
+        "a:\n  label: A\n  seed_address: Home\n  seed_odometer: 1\n  phones: ['31600000001']\n"
+        "  event_plugins: [example]\n  cap_plugin: warn\n"
+    )
+    reply = Engine(settings).handle_admin_command("list", [])
+    assert "events=example" in reply and "cap=warn" in reply

@@ -106,7 +106,7 @@ async def webhook(request: Request) -> Response:
     # Extra reply recipients (e.g. notify admins of a new join request).
     extra_notify: list[tuple[str, str]] = []
 
-    is_registered = bool(_engine.cars.resolve(sender))
+    is_registered = _engine.cars.is_registered(sender)
     is_admin = _engine.is_admin(sender)
 
     # Admin onboarding commands (approve/deny/pending/help).
@@ -117,14 +117,13 @@ async def webhook(request: Request) -> Response:
         try:
             reply = _engine.handle_admin_command(admin_cmd, admin_args)
             # If a user was just approved, welcome them too.
-            if admin_cmd == "approve" and reply.startswith("Approved"):
-                approved = _engine.cars.resolve(admin_args[0]) if admin_args else None
-                if approved:
-                    extra_notify.append((
-                        _engine.cars.resolve(admin_args[0]).phones[0],
-                        "You're approved! Send '<odometer> <destination>' to log a "
-                        "trip, or 'ping' to test. First message sets your car's start.",
-                    ))
+            if admin_cmd == "approve" and reply.startswith("Approved") and admin_args:
+                from .cars import normalize_phone
+                extra_notify.append((
+                    normalize_phone(admin_args[0]),
+                    "You're approved! Send '<odometer> <destination>' to log a "
+                    "trip, or 'ping' to test. First message sets your car's start.",
+                ))
         except Exception:  # pragma: no cover
             log.exception("admin command failed")
             reply = "Admin command failed."
@@ -153,6 +152,14 @@ async def webhook(request: Request) -> Response:
         await _send_all(sender, reply, extra_notify)
         return Response(status_code=200, content="ok")
     else:
+        # Car selection for people who report for several cars.
+        try:
+            user_reply = _engine.handle_user_command(text or "", sender)
+        except (EngineError, UnknownCarError) as exc:
+            user_reply = str(exc)
+        if user_reply is not None:
+            await _send_all(sender, user_reply, extra_notify)
+            return Response(status_code=200, content="ok")
         # Spreadsheet request: acknowledge now, generate and send in the
         # background (a plugin may take a while; Meta wants a fast 200).
         try:
