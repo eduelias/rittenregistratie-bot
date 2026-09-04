@@ -692,16 +692,15 @@ class Engine:
         start_address = self.routebook.address_for(origin_name)
         end_address = self.routebook.address_for(destination)
 
-        # Route is recorded ONLY when the driven route is not the most usual one
-        # (Belastingdienst: "de route die u hebt gereden, als u niet de meest
-        # gebruikelijke route hebt genomen"). We treat a distance that differs
-        # from the known route as "not the usual route" and record the actually
-        # driven route from the trajectory provider.
-        route_info = self.routebook.lookup(origin_name, destination)
+        # The Belastingdienst wants the driven route recorded when it was not
+        # the most usual one. The raw ledger has no field for a route, so
+        # looking one up here reports it once and then loses it; that decision
+        # belongs to export time, where the whole year is available. Enable
+        # RIT_ROUTE_ON_DEVIATION to have it mentioned in the reply anyway.
         route_str = ""
-        if route_info is not None:
-            expected = route_info.nearest_variant(trip_km)
-            if trip_km != expected:
+        if self.settings.route_on_deviation:
+            route_info = self.routebook.lookup(origin_name, destination)
+            if route_info is not None and trip_km != route_info.nearest_variant(trip_km):
                 traj = self.trajectory.get_trajectory(start_address, end_address)
                 route_str = traj.summary or ""
 
