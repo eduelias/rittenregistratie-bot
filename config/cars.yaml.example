@@ -1,10 +1,17 @@
+# One entry per car. Phones and cars are many-to-many: a car may be reported
+# by several phones (shared car) and one phone may drive several cars.
 default_car:
   label: "Company car"
   seed_address: "Home"
   seed_odometer: 145000
-  phones: ["31612345678"]
+  phones: ["31612345678", "31698765432"]   # two people report for this car
+  # Optional per-car plugin selection. Omit a key to use the global default
+  # (RIT_EVENT_PLUGINS / RIT_PRIVATE_CAP_PLUGIN).
+  # event_plugins: ["example"]   # entry points in group rittenregistratie.events
+  # cap_plugin: "warn"           # entry point in group rittenregistratie.privatecap
 van:
   label: "Delivery van"
   seed_address: "Depot"
   seed_odometer: 302000
-  phones: ["31698765432"]
+  phones: ["31612345678"]   # same person as above, second car
+  event_plugins: []         # explicitly no event plugins for this car

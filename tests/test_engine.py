@@ -223,11 +223,124 @@ def test_parse_export_command(settings):
     eng.handle_text("145040 Office", "31612345678", now=datetime(2025, 6, 1))
     eng.handle_text("145080 Home", "31612345678", now=datetime(2026, 1, 5))
     assert eng.parse_export_command("excel all", "31612345678").years == [2025, 2026]
-    # Non-admin may not name a car; admin may.
-    with pytest.raises(EngineError, match="Only admins"):
-        eng.parse_export_command("excel default_car", "31612345678")
+    # Anyone may name their own car; other cars need admin.
+    assert eng.parse_export_command("excel default_car", "31612345678").car.car_id == "default_car"
+    (settings.config_dir / "cars.yaml").write_text(
+        (settings.config_dir / "cars.yaml").read_text()
+        + "van:\n  label: Van\n  seed_address: Home\n  seed_odometer: 1\n  phones: ['31600000009']\n"
+    )
+    eng.reload_cars()
+    with pytest.raises(EngineError, match="Unknown car 'van'"):
+        eng.parse_export_command("excel van", "31612345678")
     settings.admin_numbers = "31612345678"
     admin_eng = Engine(settings)
-    assert admin_eng.parse_export_command("excel default_car 2025", "31612345678").years == [2025]
+    assert admin_eng.parse_export_command("excel van 2025", "31612345678").car.car_id == "van"
     with pytest.raises(EngineError, match="Unknown car"):
-        admin_eng.parse_export_command("excel van", "31612345678")
+        admin_eng.parse_export_command("excel boat", "31612345678")
+
+
+# --- many cars per phone, many phones per car ---------------------------------
+
+@pytest.fixture
+def multi(settings):
+    (settings.config_dir / "cars.yaml").write_text(
+        "car:\n  label: 'Family car'\n  seed_address: Home\n  seed_odometer: 145000\n"
+        "  phones: ['31612345678', '31699999999']\n"
+        "van:\n  label: 'Van'\n  seed_address: Office\n  seed_odometer: 302000\n"
+        "  phones: ['31612345678']\n"
+    )
+    return Engine(settings)
+
+
+def test_two_users_one_car_share_the_chain(multi):
+    r1 = multi.handle_text("145040 Office", "31612345678", now=datetime(2026, 1, 5, 9, 0),
+                           car=multi.cars.get("car"))
+    assert "40 km" in r1
+    # the other person continues from the same odometer/state
+    r2 = multi.handle_text("145080 Home", "31699999999", now=datetime(2026, 1, 5, 18, 0))
+    assert "[Family car] Office -> Home (40 km" in r2
+    assert multi.exporter.generate("car", 2026).rows == 2
+
+
+def test_multi_car_phone_must_choose(multi):
+    with pytest.raises(EngineError, match="several cars"):
+        multi.handle_text("145040 Office", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    assert not _has_trips(multi, "car") and not _has_trips(multi, "van")
+
+
+def test_car_command_sets_active_car(multi):
+    listing = multi.handle_user_command("cars", "31612345678")
+    assert "Family car [car]" in listing and "Van [van]" in listing and "(active)" not in listing
+    assert multi.handle_user_command("car van", "31612345678") == "Active car: Van [van]."
+    reply = multi.handle_text("302050 Home", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    assert reply.startswith("[Van] Office -> Home (50 km")
+    assert "(active)" in multi.handle_user_command("cars", "31612345678")
+    # by label, case-insensitive
+    assert multi.handle_user_command("car family CAR", "31612345678") == "Active car: Family car [car]."
+    with pytest.raises(EngineError, match="Unknown car"):
+        multi.handle_user_command("car boat", "31612345678")
+    # a single-car phone: 'cars' works, listing marks the only car active
+    assert "(active)" in multi.handle_user_command("cars", "31699999999")
+    assert multi.handle_user_command("145040 Office", "31699999999") is None
+
+
+def test_car_prefix_selects_car_for_one_message(multi):
+    multi.handle_user_command("car car", "31612345678")
+    reply = multi.handle_text("van 302050 Home", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    assert reply.startswith("[Van]")
+    reply = multi.handle_text("145040 Office", "31612345678", now=datetime(2026, 1, 5, 10, 0))
+    assert reply.startswith("[Family car]")  # active car unchanged by the prefix
+    # a pending address on the van is answered with the same prefix
+    prompt = multi.handle_text("van 302090 Gym", "31612345678", now=datetime(2026, 1, 5, 11, 0))
+    assert "don't have an address" in prompt.lower()
+    done = multi.handle_text("van Sportlaan 1, Almere", "31612345678", now=datetime(2026, 1, 5, 11, 1))
+    assert done.startswith("[Van]") and "Sportlaan 1" in done
+
+
+def test_export_command_own_car_by_name_without_admin(multi):
+    multi.handle_text("van 302050 Home", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    req = multi.parse_export_command("excel van 2026", "31612345678")
+    assert req.car.car_id == "van" and req.years == [2026]
+    req = multi.parse_export_command("excel 'Family car'".replace("'", ""), "31612345678")
+    assert req.car.car_id == "car"
+    with pytest.raises(EngineError, match="Unknown car"):
+        multi.parse_export_command("excel boat", "31612345678")
+    with pytest.raises(EngineError, match="several cars"):
+        multi.parse_export_command("excel", "31612345678")
+    multi.handle_user_command("car van", "31612345678")
+    assert multi.parse_export_command("excel", "31612345678").car.car_id == "van"
+
+
+def test_event_plugins_are_per_car(settings, monkeypatch):
+    from rittenregistratie import events as ev
+
+    class _EP:
+        def __init__(self, name, fn): self.name, self._fn = name, fn
+        def load(self): return self._fn
+
+    def reg_mark(bus):
+        bus.on(ev.EXPORT_PRE_GENERATE,
+               lambda p: {**p, "trips": [{**t, "end_address": "MARKED"} for t in p["trips"]]})
+
+    monkeypatch.setattr(ev, "entry_points", lambda group: [_EP("mark", reg_mark)])
+    (settings.config_dir / "cars.yaml").write_text(
+        "a:\n  label: A\n  seed_address: Home\n  seed_odometer: 100\n  phones: ['31600000001']\n"
+        "  event_plugins: [mark]\n"
+        "b:\n  label: B\n  seed_address: Home\n  seed_odometer: 100\n  phones: ['31600000002']\n"
+        "  event_plugins: []\n"
+        "c:\n  label: C\n  seed_address: Home\n  seed_odometer: 100\n  phones: ['31600000003']\n"
+    )
+    settings.event_plugins = ""  # global default: none
+    eng = Engine(settings)
+    for phone in ("31600000001", "31600000002", "31600000003"):
+        eng.handle_text("140 Office", phone, now=datetime(2026, 1, 5, 9, 0))
+    ra, rb, rc = (eng.exporter.generate(c, 2026) for c in ("a", "b", "c"))
+    assert (ra.handlers, rb.handlers, rc.handlers) == (1, 0, 0)
+    assert eng.loaded_event_plugins == {"a": ["mark"], "b": [], "c": []}
+    assert _rows(eng, car="a")[1][4] == "MARKED"
+    assert _rows(eng, car="b")[1][4] == "B St, Amsterdam"
+    # global default applies to cars without the key
+    settings.event_plugins = "mark"
+    eng2 = Engine(settings)
+    assert eng2.exporter.generate("c", 2026).handlers == 1
+    assert eng2.exporter.generate("b", 2026).handlers == 0

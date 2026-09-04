@@ -307,4 +307,25 @@ def test_excel_command_reports_missing_year_and_bad_args(export_client):
     assert sent["documents"] == []
     assert any("Export 2019 failed" in t and "No trips" in t for _, t in sent["texts"])
     client.post("/webhook", json=_msg_with_id("excel othercar", "wamid.Y"))
-    assert any("Could not export" in t and "Only admins" in t for _, t in sent["texts"])
+    assert any("Could not export" in t and "Unknown car 'othercar'" in t for _, t in sent["texts"])
+
+
+# --- multi-car users over the webhook -----------------------------------------
+
+def test_cars_and_car_commands_over_webhook(reaction_client, tmp_path):
+    client, sent = reaction_client
+    import rittenregistratie.main as main
+    cfg = tmp_path / "config"
+    (cfg / "cars.yaml").write_text(
+        "car:\n  label: C\n  seed_address: Home\n  seed_odometer: 100\n  phones: ['31600000000']\n"
+        "van:\n  label: V\n  seed_address: Home\n  seed_odometer: 500\n  phones: ['31600000000']\n"
+    )
+    main._engine.reload_cars()
+    client.post("/webhook", json=_msg_with_id("140 Office", "wamid.1"))
+    assert any("several cars" in t for _, t in sent["texts"])
+    client.post("/webhook", json=_msg_with_id("car van", "wamid.2"))
+    assert any(t == "Active car: V [van]." for _, t in sent["texts"])
+    client.post("/webhook", json=_msg_with_id("540 Office", "wamid.3"))
+    assert ("31600000000", "wamid.3", "\U0001F44D") in sent["reactions"]
+    client.post("/webhook", json=_msg_with_id("cars", "wamid.4"))
+    assert any("V [van] (active)" in t for _, t in sent["texts"])

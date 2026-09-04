@@ -72,8 +72,21 @@ optionally `route`, `private_detour_km`, `note`, `destination_raw`,
 sorted by time, non-decreasing odometer chain) and aborts the export with an
 error to the user if it fails. The raw ledger is never modified by an export.
 
-Enable with `RIT_EVENT_PLUGINS=*` (default: all installed) or a comma-separated
-list of entry-point names; empty disables all event plugins.
+Event plugins are selected **per car**. Each car has its own `EventBus`;
+`register(bus)` is called once per car that selects the plugin, and every
+payload carries `car_id`. Select in `cars.yaml`:
+
+```yaml
+mercedes:
+  event_plugins: ["reallocate"]   # only this car
+van:
+  event_plugins: []               # none for this car
+other:                            # key absent -> global RIT_EVENT_PLUGINS
+```
+
+The global `RIT_EVENT_PLUGINS` (`*` all installed, empty none, or a
+comma-separated list) is the default for cars without the key. The same
+applies to `cap_plugin` in `cars.yaml` versus `RIT_PRIVATE_CAP_PLUGIN`.
 
 ### Reference plugin and dry runs
 

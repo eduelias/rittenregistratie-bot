@@ -14,9 +14,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
-from .cars import Car, CarRegistry
+from .cars import ActiveCarStore, Car, CarRegistry
 from .config import Settings, load_yaml, save_location
 from .events import EventBus, load_event_plugins
 from .export import ExportService
@@ -67,6 +67,7 @@ class Engine:
         )
         from .onboarding import OnboardingStore
         self.onboarding = OnboardingStore(settings.onboarding_file)
+        self.active_cars = ActiveCarStore(settings.active_car_file)
 
         # Instantiate configured plugins (shared across cars). Any trajectory
         # provider whose constructor accepts an ``api_key`` parameter receives
@@ -84,13 +85,28 @@ class Engine:
             self.cap_plugin_override = registry.get_private_cap_plugin(
                 settings.private_cap_plugin_override
             )()
+        # Per-car cap plugin instances (cars.yaml ``cap_plugin``), by name.
+        self._cap_instances: Dict[str, object] = {}
 
-        # Event bus: plugins subscribe at startup; the core emits on export.
-        self.bus = EventBus()
-        self.event_plugins = load_event_plugins(
-            self.bus, settings.event_plugin_selection()
-        )
-        self.exporter = ExportService(settings, self.bus)
+        # Event buses are per car: each car's ``event_plugins`` (or the global
+        # RIT_EVENT_PLUGINS) subscribe to that car's bus. Built lazily.
+        self._buses: Dict[str, EventBus] = {}
+        self.loaded_event_plugins: Dict[str, List[str]] = {}
+        self.exporter = ExportService(settings, self.bus_for)
+
+    def bus_for(self, car_id: str) -> EventBus:
+        """The event bus for one car, with that car's plugins subscribed."""
+        bus = self._buses.get(car_id)
+        if bus is None:
+            car = self.cars.get(car_id)
+            selection = (
+                car.event_plugins if car is not None and car.event_plugins is not None
+                else self.settings.event_plugin_selection()
+            )
+            bus = EventBus()
+            self.loaded_event_plugins[car_id] = load_event_plugins(bus, selection)
+            self._buses[car_id] = bus
+        return bus
 
     def _load_routebook(self) -> RouteBook:
         """Seed locations from config, then learned locations from data/."""
@@ -113,13 +129,81 @@ class Engine:
             return traj_cls(api_key)
         return traj_cls()
 
-    def resolve_car(self, sender: str) -> Car:
-        car = self.cars.resolve(sender)
-        if car is None:
+    def resolve_car(self, sender: str, hint: str | None = None) -> Car:
+        """The car a message from ``sender`` is about.
+
+        ``hint`` names a car by id or label (message prefix or command
+        argument); it must be one of the sender's cars, or any car for an
+        admin. Without a hint: the sender's only car, or their active car when
+        they have several. Raises UnknownCarError for unregistered numbers and
+        EngineError when the choice is ambiguous or the hint is wrong.
+        """
+        own = self.cars.cars_for(sender)
+        if hint:
+            car = next((c for c in own if c.matches(hint)), None)
+            if car is None and self.is_admin(sender):
+                car = self.cars.find(hint)
+            if car is None:
+                raise EngineError(
+                    f"Unknown car '{hint}'. Your cars: {self._car_list(own)}."
+                    if own else f"Unknown car '{hint}'."
+                )
+            return car
+        if not own:
             raise UnknownCarError(
                 f"Number {sender} is not registered to any car."
             )
+        if len(own) == 1:
+            return own[0]
+        active = self.active_cars.get(sender)
+        car = next((c for c in own if c.car_id == active), None)
+        if car is None:
+            raise EngineError(
+                f"You report for several cars: {self._car_list(own)}. Send "
+                "'car <id>' to choose one, or start the message with the car "
+                "id, e.g. '{0} 145230 Office'.".format(own[0].car_id)
+            )
         return car
+
+    @staticmethod
+    def _car_list(cars: List[Car]) -> str:
+        return ", ".join(f"{c.label} [{c.car_id}]" for c in cars) or "none"
+
+    def _split_car_prefix(self, text: str, sender: str) -> tuple[Optional[Car], str]:
+        """``van 302050 Office`` -> (van, "302050 Office"); else (None, text)."""
+        parts = (text or "").strip().split(maxsplit=1)
+        if len(parts) == 2 and not parts[0].isdigit():
+            car = next((c for c in self.cars.cars_for(sender) if c.matches(parts[0])), None)
+            if car is not None:
+                return car, parts[1]
+        return None, text
+
+    def handle_user_command(self, text: str, sender: str) -> Optional[str]:
+        """``cars`` lists the sender's cars; ``car <id|label>`` picks the
+        active one. None if ``text`` is not one of these commands."""
+        parts = (text or "").strip().split()
+        if not parts:
+            return None
+        cmd = parts[0].lower().lstrip("/")
+        if cmd not in ("cars", "car"):
+            return None
+        own = self.cars.cars_for(sender)
+        if not own:
+            raise UnknownCarError(f"Number {sender} is not registered to any car.")
+        if cmd == "car" and len(parts) > 1:
+            car = self.resolve_car(sender, " ".join(parts[1:]))
+            if car not in own:
+                raise EngineError("You can only activate one of your own cars.")
+            self.active_cars.set(sender, car.car_id)
+            return Reply(f"Active car: {car.label} [{car.car_id}].")
+        active = self.active_cars.get(sender) if len(own) > 1 else own[0].car_id
+        lines = ["Your cars:"]
+        for c in own:
+            mark = " (active)" if c.car_id == active else ""
+            lines.append(f"- {c.label} [{c.car_id}]{mark}")
+        if len(own) > 1:
+            lines.append("Switch with 'car <id>' or prefix a message with the car id.")
+        return Reply("\n".join(lines))
 
     # --- onboarding ---------------------------------------------------
     def reload_cars(self) -> None:
@@ -128,6 +212,8 @@ class Engine:
             fallback_seed_address=self.settings.seed_address,
             fallback_seed_odometer=self.settings.seed_odometer,
         )
+        # Plugin selection lives in cars.yaml; rebuild buses on next use.
+        self._buses.clear()
 
     def is_admin(self, sender: str) -> bool:
         from .cars import normalize_phone
@@ -142,8 +228,14 @@ class Engine:
         return bool(allow and any(p in allow for p in car.phones))
 
     def _cap_for_car(self, car: Car):
-        """Return the private-cap plugin for a car: the override plugin if any of
-        the car's numbers is allow-listed, else the default cap plugin."""
+        """The private-cap plugin for a car: ``cap_plugin`` from cars.yaml if
+        set; else the legacy per-number override; else the default."""
+        if car.cap_plugin:
+            inst = self._cap_instances.get(car.cap_plugin)
+            if inst is None:
+                inst = registry.get_private_cap_plugin(car.cap_plugin)()
+                self._cap_instances[car.cap_plugin] = inst
+            return inst
         if self._uses_override(car):
             return self.cap_plugin_override
         return self.cap_plugin
@@ -155,38 +247,77 @@ class Engine:
     def handle_admin_command(self, cmd: str, args: list) -> str:
         """Process an admin onboarding command; returns a reply for the admin."""
         from .cars import (
-            add_car_to_yaml, normalize_phone, remove_car_from_yaml, slugify_car_id,
+            add_car_to_yaml, add_phone_to_car_yaml, normalize_phone,
+            remove_car_from_yaml, remove_phone_from_car_yaml, slugify_car_id,
         )
 
         if cmd == "help":
             return (
                 "Admin commands:\n"
                 "pending — list join requests\n"
-                "approve <number> <label> <seed_odo> [address...] — add a user\n"
+                "approve <number> <label> <seed_odo> [address...] — add a car "
+                "for a number (a number may have several cars)\n"
+                "assign <number> <car_id> — let a number report for an existing car\n"
+                "unassign <number> <car_id> — undo assign\n"
                 "deny <number> — reject a request\n"
-                "list — list registered users\n"
-                "remove <number|car_id> — remove a user"
+                "list — list cars, numbers and plugins\n"
+                "remove <number|car_id> — remove a car, or a number from all cars\n"
+                "Everyone: cars — list your cars; car <id> — choose the active one; "
+                "excel [car] [year|all] — spreadsheet."
             )
         if cmd == "list":
-            cars = self.cars._cars
-            lines = [f"Registered users ({len(cars)}/{self.settings.max_users}):"]
-            for cid, car in cars.items():
+            cars = self.cars.all()
+            lines = [f"Registered cars ({len(cars)}/{self.settings.max_users}):"]
+            for car in cars:
+                plugins = []
+                if car.event_plugins is not None:
+                    plugins.append(f"events={','.join(car.event_plugins) or 'none'}")
+                if car.cap_plugin:
+                    plugins.append(f"cap={car.cap_plugin}")
+                extra = f" [{'; '.join(plugins)}]" if plugins else ""
                 lines.append(
-                    f"- {car.label} [{cid}] {', '.join(car.phones)} "
-                    f"(seed {car.seed_odometer} km)"
+                    f"- {car.label} [{car.car_id}] {', '.join(car.phones) or 'no numbers'} "
+                    f"(seed {car.seed_odometer} km){extra}"
                 )
             return "\n".join(lines)
         if cmd == "remove":
             if not args:
                 return "Usage: remove <number|car_id>"
-            removed = remove_car_from_yaml(self.settings.cars_file, args[0])
-            if not removed:
-                return f"No user found for '{args[0]}'."
+            result = remove_car_from_yaml(self.settings.cars_file, args[0])
+            if not result:
+                return f"No car or number found for '{args[0]}'."
             self.reload_cars()
-            return (
-                f"Removed user '{removed}'. Their trip logs and state files are "
-                f"kept on disk (raw-ledger-{removed}.jsonl, state-{removed}.json)."
-            )
+            parts = []
+            if result.removed_cars:
+                parts.append(
+                    "Removed car(s) " + ", ".join(f"'{c}'" for c in result.removed_cars)
+                    + ". Their ledger and state files are kept on disk."
+                )
+            detached = [c for c in result.detached_from if c not in result.removed_cars]
+            if detached:
+                parts.append(
+                    f"Number {normalize_phone(args[0])} no longer reports for "
+                    + ", ".join(f"'{c}'" for c in detached) + "."
+                )
+            return " ".join(parts)
+        if cmd in ("assign", "unassign"):
+            if len(args) < 2:
+                return f"Usage: {cmd} <number> <car_id>"
+            phone, car_id = normalize_phone(args[0]), args[1]
+            try:
+                if cmd == "assign":
+                    changed = add_phone_to_car_yaml(self.settings.cars_file, car_id, phone)
+                else:
+                    changed = remove_phone_from_car_yaml(self.settings.cars_file, car_id, phone)
+            except ValueError as exc:
+                return f"Could not {cmd}: {exc}"
+            self.reload_cars()
+            self.onboarding.remove(phone)
+            if cmd == "assign":
+                return (f"{phone} now reports for '{car_id}'." if changed
+                        else f"{phone} already reports for '{car_id}'.")
+            return (f"{phone} no longer reports for '{car_id}'." if changed
+                    else f"{phone} was not assigned to '{car_id}'.")
         if cmd == "pending":
             reqs = self.onboarding.list()
             if not reqs:
@@ -218,13 +349,13 @@ class Engine:
             if seed_odo is None:
                 return "Could not find the seed odometer (a number). " \
                        "Usage: approve <number> <label> <seed_odo> [address]"
-            if len(self.cars._cars) >= self.settings.max_users:
+            if len(self.cars.all()) >= self.settings.max_users:
                 return (
                     f"User limit reached ({self.settings.max_users}). "
                     f"Remove a user first (remove <number>) or raise "
                     f"RIT_MAX_USERS."
                 )
-            existing = list(self.cars._cars.keys())
+            existing = [c.car_id for c in self.cars.all()]
             car_id = slugify_car_id(label, existing)
             try:
                 add_car_to_yaml(
@@ -270,9 +401,9 @@ class Engine:
         if not parts or parts[0].lower().lstrip("/") not in _EXPORT_WORDS:
             return None
         now = now or datetime.now()
-        car: Optional[Car] = None
         years: List[int] = []
         want_all = False
+        name_words: List[str] = []
         for arg in parts[1:]:
             low = arg.lower()
             if low == "all":
@@ -280,17 +411,9 @@ class Engine:
             elif low.isdigit() and len(low) == 4:
                 years.append(int(low))
             else:
-                if not self.is_admin(sender):
-                    raise EngineError(
-                        "Send 'excel', 'excel <year>' or 'excel all'. Only admins "
-                        "can export another car."
-                    )
-                found = self.cars.get(arg)
-                if found is None:
-                    raise EngineError(f"Unknown car '{arg}'.")
-                car = found
-        if car is None:
-            car = self.resolve_car(sender)
+                name_words.append(arg)  # car id or (multi-word) label
+        # Own car by id/label without admin; any car for admins.
+        car = self.resolve_car(sender, " ".join(name_words) or None)
         if want_all:
             years = self.exporter.years(car.car_id)
             if not years:
@@ -300,10 +423,14 @@ class Engine:
         return ExportRequest(car=car, years=sorted(set(years)))
 
     def handle_text(
-        self, text: str, sender: str, now: datetime | None = None
+        self, text: str, sender: str, now: datetime | None = None,
+        car: Car | None = None,
     ) -> str:
         now = now or datetime.now()
-        car = self.resolve_car(sender)
+        if car is None:
+            car, text = self._split_car_prefix(text, sender)
+        if car is None:
+            car = self.resolve_car(sender)
         store = StateStore(self.settings.state_file(car.car_id))
         state = store.seed_if_empty(car.seed_address, car.seed_odometer)
 
@@ -407,7 +534,7 @@ class Engine:
         if as_trip is not None and as_trip.end_odo >= state.last_odometer:
             state.pending = None
             store.save(state)
-            inner = self.handle_text(answer, sender, now)
+            inner = self.handle_text(answer, sender, now, car=car)
             return Reply(
                 f"Dropped the pending trip to '{destination}' (odometer "
                 f"{pending.get('end_odo')}): no address was given, so it was "

@@ -4,7 +4,11 @@ Flow:
 - An unregistered number messages the bot -> a pending join request is stored
   and the sender is told an admin will review it. Admins are notified.
 - An admin sends: ``approve <number> <label> <seed_odo> [seed_address...]``
-  -> the number is registered as a new car and the new user is welcomed.
+  -> a new car is registered for the number and the user is welcomed. A
+  number may own several cars, so approving an already-registered number
+  adds a second car for it.
+- ``assign <number> <car_id>`` lets another number report for an existing
+  car (a shared car); ``unassign <number> <car_id>`` reverses it.
 - ``pending`` lists requests; ``deny <number>`` removes one.
 
 Pending requests are persisted to ``data/onboarding.json`` so they survive
@@ -88,6 +92,7 @@ def parse_admin_command(text: str) -> tuple[str, list[str]]:
     if not parts:
         return "", []
     cmd = parts[0].lower().lstrip("/")
-    if cmd in ("approve", "deny", "pending", "help", "list", "remove"):
+    if cmd in ("approve", "deny", "pending", "help", "list", "remove",
+               "assign", "unassign"):
         return cmd, parts[1:]
     return "", []

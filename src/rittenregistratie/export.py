@@ -17,9 +17,10 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from .config import Settings
+from .config import load_yaml as load_yaml_file
 from .events import EXPORT_POST_GENERATE, EXPORT_PRE_GENERATE, EventBus
 from .excel_writer import ExcelWriter
 from .models import Trip, TripSource, TripType
@@ -107,10 +108,21 @@ def validate_trips(trips: Any) -> List[Dict[str, Any]]:
     return rows
 
 
+BusProvider = Callable[[str], EventBus]
+
+
 class ExportService:
-    def __init__(self, settings: Settings, bus: EventBus):
+    def __init__(self, settings: Settings, bus: Union[EventBus, BusProvider]):
+        """``bus`` is one EventBus for every car, or a callable
+        ``car_id -> EventBus`` so each car gets its own plugin selection."""
         self.settings = settings
-        self.bus = bus
+        if isinstance(bus, EventBus):
+            self._bus_for: BusProvider = lambda car_id: bus
+        else:
+            self._bus_for = bus
+
+    def bus_for(self, car_id: str) -> EventBus:
+        return self._bus_for(car_id)
 
     def ledger(self, car_id: str) -> RawLedger:
         return RawLedger(self.settings.raw_ledger_file(car_id))
@@ -138,8 +150,9 @@ class ExportService:
             "config_dir": str(self.settings.config_dir),
             "trips": trips,
         }
-        handlers = len(self.bus.handlers(EXPORT_PRE_GENERATE))
-        result = self.bus.emit(EXPORT_PRE_GENERATE, payload)
+        bus = self.bus_for(car_id)
+        handlers = len(bus.handlers(EXPORT_PRE_GENERATE))
+        result = bus.emit(EXPORT_PRE_GENERATE, payload)
         if not isinstance(result, dict) or "trips" not in result:
             raise ExportError("export.pre_generate handler returned an invalid payload")
         rows = validate_trips(result["trips"])
@@ -150,7 +163,7 @@ class ExportService:
         out_dir.mkdir(parents=True, exist_ok=True)
         path = ExcelWriter(out_dir, car_id).write_all(year, [raw_to_trip(r) for r in rows])
 
-        self.bus.emit(EXPORT_POST_GENERATE, {
+        bus.emit(EXPORT_POST_GENERATE, {
             "car_id": car_id, "year": year, "path": str(path), "rows": len(rows),
         })
         return ExportResult(car_id=car_id, year=year, path=path, rows=len(rows), handlers=handlers)
@@ -181,7 +194,8 @@ def main(argv=None) -> int:
     ap.add_argument("--data-dir", type=Path, default=None)
     ap.add_argument("--config-dir", type=Path, default=None)
     ap.add_argument("--no-plugins", action="store_true", help="ignore installed event plugins")
-    ap.add_argument("--plugins", default=None, help="comma-separated entry-point names to load")
+    ap.add_argument("--plugins", default=None,
+                    help="comma-separated entry-point names to load (overrides cars.yaml)")
     ap.add_argument("--json", action="store_true", help="also dump the validated rows as JSON lines")
     args = ap.parse_args(argv)
 
@@ -192,15 +206,25 @@ def main(argv=None) -> int:
         kw["config_dir"] = args.config_dir
     settings = Settings(**kw)
 
-    bus = EventBus()
-    if args.no_plugins:
-        loaded: List[str] = []
-    else:
-        selection = None if args.plugins is None else [p for p in args.plugins.split(",") if p.strip()]
-        loaded = load_event_plugins(bus, selection)
-    print(f"event plugins: {loaded or 'none (pass-through)'}")
+    from .cars import CarRegistry
+    registry = CarRegistry(load_yaml_file(settings.cars_file))
 
-    svc = ExportService(settings, bus)
+    def bus_for(car_id: str) -> EventBus:
+        bus = EventBus()
+        if args.no_plugins:
+            loaded: List[str] = []
+        else:
+            if args.plugins is not None:
+                selection = [p for p in args.plugins.split(",") if p.strip()]
+            else:
+                car = registry.get(car_id)
+                selection = (car.event_plugins if car is not None and car.event_plugins is not None
+                             else settings.event_plugin_selection())
+            loaded = load_event_plugins(bus, selection)
+        print(f"event plugins for {car_id}: {loaded or 'none (pass-through)'}")
+        return bus
+
+    svc = ExportService(settings, bus_for)
     years = args.years or svc.years(args.car_id)
     if not years:
         print(f"No trips recorded for '{args.car_id}'.")
@@ -218,7 +242,7 @@ def main(argv=None) -> int:
         raw = len(svc.trips_for_year(args.car_id, year))
         print(f"{year}: {res.rows} rows (ledger had {raw}) -> {res.path}")
         if args.json:
-            for row in validate_trips(bus.emit(EXPORT_PRE_GENERATE, {
+            for row in validate_trips(svc.bus_for(args.car_id).emit(EXPORT_PRE_GENERATE, {
                 "car_id": args.car_id, "year": year,
                 "data_dir": str(settings.data_dir), "config_dir": str(settings.config_dir),
                 "trips": svc.trips_for_year(args.car_id, year),
