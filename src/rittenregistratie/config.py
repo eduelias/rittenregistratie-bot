@@ -36,6 +36,12 @@ class Settings(BaseSettings):
 
     # Trajectory
     google_maps_api_key: str = ""
+    # Look up the driven route when a trip's distance is not the usual one, and
+    # mention it in the reply. Off by default: the ledger has no field for a
+    # route, so anything found here is reported once and then lost. Deciding
+    # what the Route column should say is a job for export time, where the
+    # whole year is in hand (see docs/plugins.md).
+    route_on_deviation: bool = False
 
     # Plugin selection (entry-point names)
     odometer_source: str = "whatsapp_manual"

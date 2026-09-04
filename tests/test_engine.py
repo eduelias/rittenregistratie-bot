@@ -57,10 +57,20 @@ def test_first_trip_uses_seed(settings):
     assert rows[1][2] == 145040  # Eindstand
 
 
-def test_deviation_detected(settings):
+def test_no_route_lookup_by_default(settings):
+    """The ledger cannot keep a route, so the core does not go looking for one."""
+    eng = Engine(settings)
+    reply = eng.handle_text("145050 Office", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    assert "route" not in reply.lower()
+    assert not reply.notice, "a plain trip must not break through reaction mode"
+
+
+def test_deviation_reported_when_asked_for(settings):
+    settings.route_on_deviation = True
     eng = Engine(settings)
     reply = eng.handle_text("145050 Office", "31612345678", now=datetime(2026, 1, 5, 9, 0))
     assert "deviation" in reply.lower() or "route" in reply.lower()
+    assert reply.notice
 
 
 def test_monotonic_enforced(settings):
