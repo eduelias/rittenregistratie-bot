@@ -88,6 +88,36 @@ The global `RIT_EVENT_PLUGINS` (`*` all installed, empty none, or a
 comma-separated list) is the default for cars without the key. The same
 applies to `cap_plugin` in `cars.yaml` versus `RIT_PRIVATE_CAP_PLUGIN`.
 
+### Vehicle-telemetry hooks (`hook.<plugin>`)
+
+A plugin that brings trips in from a car subscribes to `hook.<plugin>`:
+
+```python
+from rittenregistratie.events import hook_event
+from rittenregistratie.models import VehicleTripReport
+
+def register(bus):
+    bus.on(hook_event("homeassistant"), on_hook)
+
+def on_hook(payload):
+    # payload: {"car_id", "plugin", "body": <JSON the source posted>, "headers": {x-*}}
+    b = payload["body"]
+    if b.get("ignition") != "off":
+        return None                      # not a finished trip: ignored
+    return VehicleTripReport(
+        end_odo=int(b["odometer"]), start_odo=b.get("start_odometer"),
+        latitude=b.get("lat"), longitude=b.get("lon"), zone=b.get("zone", ""),
+    )
+```
+
+The source POSTs to `/hooks/homeassistant/<car_id>` with header
+`X-Hook-Secret: <RIT_HOOK_SECRET>`. Only cars listing the plugin in their
+`event_plugins` receive the event (404 otherwise). Returning `None` means
+"nothing to log"; returning a report makes the core write a ledger row,
+resolve the end place from known locations' coordinates, and notify the car's
+numbers. The core never guesses: an unknown place is stored as its address and
+the user is asked to name it.
+
 ### Reference plugin and dry runs
 
 `examples/rittenregistratie-events-example/` is a complete, installable event

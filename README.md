@@ -38,6 +38,11 @@ comfortably on a Raspberry Pi.
 - **Event bus for plugins** — the core emits `export.pre_generate` and
   `export.post_generate`; a plugin may transform the data before the workbook
   is written. Without plugins the export is exactly what you typed.
+- **Automatic trips from your car** — a vehicle-telemetry plugin (for example
+  [rittenregistratie-homeassistant](https://github.com/eduelias/rittenregistratie-homeassistant)
+  for cars visible in Home Assistant) posts ignition-off events to
+  `/hooks/<plugin>/<car>`; the core logs the trip, resolves the end place from
+  known locations' coordinates, and tells you on WhatsApp. Opt in per car.
 - **Multi-car, many-to-many** — several people can report for one car, and one
   person can drive several cars (`car <id>` picks the active one, or prefix a
   message with the car id). Separate ledger, state and plugins per car.
@@ -201,6 +206,47 @@ The export pipeline is where plugins may act (see [Plugin system](#plugin-system
    non-decreasing odometer chain); a bad result aborts the export with an error
    message rather than sending a partial file;
 4. write the workbook and emit `export.post_generate` with its path.
+
+## Automatic trips from vehicle telemetry
+
+The core knows nothing about any car maker. A plugin does, and a car opts in:
+
+```yaml
+# cars.yaml
+mercedes:
+  event_plugins: ["homeassistant"]     # this car accepts trips from that plugin
+```
+
+```
+RIT_HOOK_SECRET=<random string>       # .env; the plugin's source sends it as X-Hook-Secret
+```
+
+The source (a Home Assistant automation, a car cloud, an OBD dongle) POSTs JSON
+to `/hooks/<plugin>/<car_id>`. The plugin's handler turns the body into a
+`VehicleTripReport` (end odometer, coordinates, geofence name, optional
+ignition-on reading). The core then does exactly what it does for a typed
+message:
+
+- start odometer and start address follow the chain of previous rows;
+- the end place is the known location the source names, else the known
+  location whose `lat`/`lon` in `locations.yaml` is within `radius_m` (default
+  `RIT_PLACE_RADIUS_M`, 300 m), else the reverse-geocoded address (or the bare
+  coordinates without a Google key). `private: true` on a location marks trips
+  ending there as private;
+- the row is written to the ledger with a note naming the source; if the
+  ignition-on reading differs from the previous row's end, the note states the
+  uncovered kilometres. Nothing is filled in;
+- everyone reporting for the car gets the usual summary on WhatsApp. For an
+  unknown place the message asks you to reply `name <place>`, which stores the
+  address and coordinates as a learned location for next time;
+- a reading that is not above the last one is ignored, and a typed message
+  with the same reading and place answers "Already logged".
+
+Give your known locations coordinates so proximity matching works:
+
+```yaml
+spg: { address: "Waldorpstraat 3, 2521 CA Den Haag", lat: 52.0781, lon: 4.3168 }
+```
 
 ## Excel schema (exactly the Belastingdienst per-trip fields)
 

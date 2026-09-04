@@ -5,12 +5,15 @@ import asyncio
 import logging
 
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from starlette.background import BackgroundTask
 
 from . import whatsapp
 from .config import get_settings
 from .engine import Engine, EngineError, ExportRequest, UnknownCarError
+from .events import hook_event
 from .export import ExportError
+from .models import VehicleTripReport
 from .parser import ParseError
 
 logging.basicConfig(level=logging.INFO)
@@ -57,6 +60,60 @@ async def selftest(to: str = "") -> dict:
             },
         )
     return {"ok": resp.status_code < 400, "status": resp.status_code, "body": resp.json()}
+
+
+@app.post("/hooks/{plugin}/{car_id}")
+async def vehicle_hook(plugin: str, car_id: str, request: Request) -> Response:
+    """Inbound vehicle-telemetry post for one car, handled by one plugin.
+
+    The plugin (enabled for the car via ``event_plugins``) turns the body into
+    a VehicleTripReport; the core logs it like a typed message and notifies
+    the car's numbers. Protected by ``X-Hook-Secret`` == RIT_HOOK_SECRET.
+    """
+    secret = _settings.hook_secret
+    if not secret or request.headers.get("X-Hook-Secret", "") != secret:
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    car = _engine.cars.get(car_id)
+    if car is None:
+        return JSONResponse({"error": f"unknown car '{car_id}'"}, status_code=404)
+    event = hook_event(plugin)
+    bus = _engine.bus_for(car_id)
+    if not bus.handlers(event):
+        return JSONResponse(
+            {"error": f"plugin '{plugin}' is not enabled for car '{car_id}'"}, status_code=404,
+        )
+    try:
+        body = await request.json()
+    except ValueError:
+        return JSONResponse({"error": "body is not JSON"}, status_code=400)
+    payload = {
+        "car_id": car_id, "plugin": plugin, "body": body,
+        "headers": {k: v for k, v in request.headers.items() if k.lower().startswith("x-")},
+    }
+    try:
+        result = bus.emit(event, payload)
+    except Exception as exc:  # a plugin bug must not take the webhook down
+        log.exception("hook plugin %s failed", plugin)
+        return JSONResponse({"error": f"plugin error: {exc}"}, status_code=422)
+    if not isinstance(result, VehicleTripReport):
+        return JSONResponse({"status": "ignored", "reason": "plugin returned no trip"})
+    result.source = result.source or plugin
+    try:
+        reply = _engine.handle_vehicle_trip(car, result)
+    except (EngineError, UnknownCarError) as exc:
+        return JSONResponse({"status": "rejected", "reason": str(exc)}, status_code=422)
+    if reply is None:
+        return JSONResponse({"status": "ignored", "reason": "reading not above the last logged one"})
+    graph_url = f"https://graph.facebook.com/{_settings.whatsapp_graph_version}"
+    notified = []
+    for phone in car.phones:
+        ok = await whatsapp.send_message(
+            _settings.whatsapp_token, _settings.whatsapp_phone_number_id,
+            phone, reply, graph_url=graph_url,
+        )
+        notified.append({"to": phone, "delivered": ok})
+    log.info("Vehicle trip logged for %s via %s (odo %s).", car_id, plugin, result.end_odo)
+    return JSONResponse({"status": "logged", "end_odo": result.end_odo, "notified": notified})
 
 
 @app.get("/webhook")

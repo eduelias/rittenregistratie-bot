@@ -2,9 +2,14 @@
 
 ``locations.yaml``::
 
-    Home:   { address: "Dorpsstraat 1, Utrecht" }
-    Office: { address: "Keizersgracht 1, Amsterdam" }
+    Home:   { address: "Dorpsstraat 1, Utrecht", lat: 52.09, lon: 5.12 }
+    Office: { address: "Keizersgracht 1, Amsterdam", lat: 52.37, lon: 4.89,
+              radius_m: 250, private: false }
     hq:     { address: "Office" }      # alias: resolves to Office's address
+
+``lat``/``lon`` are optional and let vehicle-telemetry plugins match a
+trip's end position to a known place (within ``radius_m``); ``private: true``
+marks trips to that place as private.
 
 ``routes.yaml``::
 
@@ -19,10 +24,21 @@ yields the single canonical address string instead of the alias name.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 _MAX_ALIAS_HOPS = 5
+_EARTH_M = 6_371_000.0
+
+
+def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in metres."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi = p2 - p1
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * _EARTH_M * math.asin(math.sqrt(a))
 
 
 def normalize_name(name: str) -> str:
@@ -102,6 +118,32 @@ class RouteBook:
     def is_known(self, name: str) -> bool:
         """True if the name maps to a known location with an address."""
         return bool(self._raw_address(name))
+
+    def entry(self, name: str) -> Optional[dict]:
+        """The raw config entry for a known name (aliases not followed)."""
+        return self._locations.get(normalize_name(name))
+
+    def is_private_place(self, name: str) -> bool:
+        loc = self.entry(name)
+        return bool(loc and loc.get("private"))
+
+    def nearest(
+        self, lat: float, lon: float, default_radius_m: float = 300.0,
+    ) -> Optional[Tuple[str, str, float]]:
+        """The closest known location with coordinates whose radius covers the
+        point: ``(name, address, distance_m)``; None when nothing is in range.
+        Per-location ``radius_m`` overrides ``default_radius_m``."""
+        best: Optional[Tuple[str, str, float]] = None
+        for key, loc in self._locations.items():
+            try:
+                llat, llon = float(loc["lat"]), float(loc["lon"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            d = haversine_m(lat, lon, llat, llon)
+            radius = float(loc.get("radius_m", default_radius_m))
+            if d <= radius and (best is None or d < best[2]):
+                best = (key, self.address_for(key), d)
+        return best
 
     def lookup(self, origin: str, destination: str) -> Optional[RouteInfo]:
         return self._routes.get(

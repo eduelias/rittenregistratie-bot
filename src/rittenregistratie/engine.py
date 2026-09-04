@@ -26,6 +26,7 @@ from .models import (
     Trip,
     TripSource,
     TripType,
+    VehicleTripReport,
 )
 from .parser import ParseError, parse_message
 from .plugins import registry
@@ -185,11 +186,13 @@ class Engine:
         if not parts:
             return None
         cmd = parts[0].lower().lstrip("/")
-        if cmd not in ("cars", "car"):
+        if cmd not in ("cars", "car", "name"):
             return None
         own = self.cars.cars_for(sender)
         if not own:
             raise UnknownCarError(f"Number {sender} is not registered to any car.")
+        if cmd == "name":
+            return self._name_last_unnamed(sender, " ".join(parts[1:]).strip())
         if cmd == "car" and len(parts) > 1:
             car = self.resolve_car(sender, " ".join(parts[1:]))
             if car not in own:
@@ -204,6 +207,95 @@ class Engine:
         if len(own) > 1:
             lines.append("Switch with 'car <id>' or prefix a message with the car id.")
         return Reply("\n".join(lines))
+
+    def _name_last_unnamed(self, sender: str, place: str) -> Reply:
+        """``name <place>``: give the last automatically logged, unnamed end
+        position a name, so future trips there resolve to it."""
+        car = self.resolve_car(sender)
+        store = StateStore(self.settings.state_file(car.car_id))
+        state = store.seed_if_empty(car.seed_address, car.seed_odometer)
+        if not place:
+            return Reply("Usage: name <place>  (names the last unnamed trip end).")
+        if not state.last_unnamed:
+            return Reply("Nothing to name: the last automatic trip ended at a known place.")
+        info = state.last_unnamed
+        save_location(
+            self.settings.learned_locations_file, place, info["address"],
+            lat=info.get("lat"), lon=info.get("lon"),
+        )
+        self.routebook = self._load_routebook()
+        state.last_unnamed = None
+        store.save(state)
+        return Reply(f"Saved '{place}': {info['address']}. Future trips ending there will use it.")
+
+    # --- vehicle telemetry ------------------------------------------------
+    def _place_for(self, report: VehicleTripReport) -> tuple[Optional[str], str, bool]:
+        """Where a reported trip ended: ``(known_name, address, is_private)``.
+
+        Order: a known place name from the source, a known geofence/zone name,
+        the nearest known location within radius of the coordinates, then
+        reverse geocoding (or the bare coordinates) with ``known_name`` None.
+        """
+        for hint in (report.place, report.zone):
+            if hint and self.routebook.is_known(hint):
+                return hint, self.routebook.address_for(hint), self.routebook.is_private_place(hint)
+        if report.latitude is not None and report.longitude is not None:
+            hit = self.routebook.nearest(
+                report.latitude, report.longitude, float(self.settings.place_radius_m)
+            )
+            if hit is not None:
+                name, address, _dist = hit
+                return name, address, self.routebook.is_private_place(name)
+            address = reverse_geocode(
+                report.latitude, report.longitude, self.settings.google_maps_api_key
+            ) or f"{report.latitude:.5f},{report.longitude:.5f}"
+            return None, address, False
+        return None, report.zone or "(unknown location)", False
+
+    def handle_vehicle_trip(self, car: Car, report: VehicleTripReport) -> Optional[Reply]:
+        """Log a trip reported by a vehicle-telemetry plugin. Returns None when
+        nothing is logged (reading not above the last one), else the same
+        Reply a typed message would get, with ``notice`` set when the end place
+        is unknown so the user is asked to name it."""
+        now = report.ended_at or datetime.now()
+        store = StateStore(self.settings.state_file(car.car_id))
+        state = store.seed_if_empty(car.seed_address, car.seed_odometer)
+        if report.end_odo <= state.last_odometer:
+            return None  # already logged (manually or by an earlier event), or 0 km
+
+        name, address, is_private = self._place_for(report)
+        note_bits = [f"auto-logged from {report.source or 'vehicle'}"]
+        if report.start_odo is not None and report.start_odo != state.last_odometer:
+            gap = report.start_odo - state.last_odometer
+            note_bits.append(
+                f"reading at ignition on was {report.start_odo}; {gap} km before this trip "
+                "are not covered by any row"
+            )
+        if name is None:
+            note_bits.append("end place not known; reply 'name <place>' to teach it")
+        destination = name if name is not None else address
+        raw = f"[{report.source or 'vehicle'}] end_odo={report.end_odo}"
+        if report.latitude is not None and report.longitude is not None:
+            raw += f" at {report.latitude:.5f},{report.longitude:.5f}"
+        if report.zone:
+            raw += f" zone={report.zone}"
+
+        reply = self._commit_trip(
+            car, store, state, now,
+            end_odo=report.end_odo, destination=destination, is_private=is_private,
+            note="; ".join(note_bits), raw_message=raw,
+        )
+        state = store.load()
+        if name is None:
+            state.last_unnamed = {
+                "address": address, "lat": report.latitude, "lon": report.longitude,
+            }
+            extra = "\nI don't know this place. Reply 'name <place>' to teach me it."
+        else:
+            state.last_unnamed = None
+            extra = ""
+        store.save(state)
+        return Reply(str(reply) + extra, logged=True, notice=bool(extra) or reply.notice)
 
     # --- onboarding ---------------------------------------------------
     def reload_cars(self) -> None:
@@ -442,6 +534,17 @@ class Engine:
             )
 
         parsed: ParsedMessage = parse_message(text)
+
+        if (
+            parsed.end_odo == state.last_odometer
+            and state.last_address
+            and self.routebook.address_for(parsed.destination)
+            == self.routebook.address_for(state.last_address)
+        ):
+            return Reply(
+                f"[{car.label}] Already logged: odometer {parsed.end_odo} at "
+                f"{state.last_address}. Nothing added."
+            )
 
         if parsed.end_odo < state.last_odometer:
             raise EngineError(
