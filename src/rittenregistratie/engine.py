@@ -535,15 +535,20 @@ class Engine:
 
         parsed: ParsedMessage = parse_message(text)
 
-        if (
-            parsed.end_odo == state.last_odometer
-            and state.last_address
-            and self.routebook.address_for(parsed.destination)
-            == self.routebook.address_for(state.last_address)
-        ):
+        # The odometer has not moved, so whatever this is, it is not a trip.
+        # Repeating the last reading and place is a duplicate; repeating the
+        # reading with a different place used to write a 0 km row, which is how
+        # a message meant as a comment ("20772 private") ended up in the
+        # logbook as a journey.
+        if parsed.end_odo == state.last_odometer:
+            where = (
+                f" at {state.last_address}" if state.last_address
+                and self.routebook.address_for(parsed.destination)
+                == self.routebook.address_for(state.last_address) else ""
+            )
             return Reply(
-                f"[{car.label}] Already logged: odometer {parsed.end_odo} at "
-                f"{state.last_address}. Nothing added."
+                f"[{car.label}] Already logged: odometer {parsed.end_odo}{where}. "
+                f"Nothing added — the odometer has not moved since."
             )
 
         if parsed.end_odo < state.last_odometer:
