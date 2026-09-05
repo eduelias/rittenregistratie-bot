@@ -354,3 +354,21 @@ def test_event_plugins_are_per_car(settings, monkeypatch):
     eng2 = Engine(settings)
     assert eng2.exporter.generate("c", 2026).handlers == 1
     assert eng2.exporter.generate("b", 2026).handlers == 0
+
+
+def test_a_zero_distance_trip_is_never_logged(settings):
+    """"145040 private" after 145040 is a comment, not a 128 km journey."""
+    eng = Engine(settings)
+    eng.handle_text("145040 Office", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    rows_before = _rows(eng)
+    reply = eng.handle_text("145040 private", "31612345678", now=datetime(2026, 1, 5, 9, 5))
+    assert "already logged" in reply.lower()
+    assert "has not moved" in reply.lower()
+    assert _rows(eng) == rows_before, "a 0 km row reached the logbook"
+
+
+def test_repeating_the_last_reading_and_place_still_says_where(settings):
+    eng = Engine(settings)
+    eng.handle_text("145040 Office", "31612345678", now=datetime(2026, 1, 5, 9, 0))
+    reply = eng.handle_text("145040 Office", "31612345678", now=datetime(2026, 1, 5, 9, 5))
+    assert "already logged" in reply.lower() and "Office" in reply
