@@ -144,12 +144,22 @@ def save_location(path: Path, name: str, address: str, **extra) -> None:
     The name is stored normalized (lower-case, single spaces) so lookups are
     case-insensitive and one place never gets two entries. ``extra`` may carry
     ``lat``/``lon``/``radius_m``/``private`` for vehicle-telemetry matching.
+
+    An existing entry is updated field by field, not replaced. A place is
+    taught in more than one way — coordinates arrive from the car, the address
+    from a chat reply, ``private`` from the driver — and each of those calls
+    knows only its own part. Replacing the entry meant whichever came last
+    silently dropped the rest: answering an address prompt for a place the car
+    had already located wiped its coordinates and its private flag, so the
+    next trip there was neither recognised nor classified.
     """
     from .routes import normalize_name
     data = load_yaml(path)
-    entry = {"address": address}
+    key = normalize_name(name)
+    entry = dict(data.get(key) or {})
+    entry["address"] = address
     entry.update({k: v for k, v in extra.items() if v is not None})
-    data[normalize_name(name)] = entry
+    data[key] = entry
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
         yaml.safe_dump(data, fh, sort_keys=True, allow_unicode=True)
