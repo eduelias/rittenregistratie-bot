@@ -775,4 +775,8 @@ class Engine:
                 learned or route_str
                 or (cap and cap.message and getattr(cap, "important", False))
             ),
+            facts={
+                "label": car.label, "origin": origin_name, "destination": destination,
+                "km": trip_km, "purpose": trip_type.value, "odometer": end_odo,
+            },
         )

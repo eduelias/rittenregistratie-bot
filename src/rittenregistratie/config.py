@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     whatsapp_app_secret: str = ""
     whatsapp_verify_token: str = "changeme"
     whatsapp_graph_version: str = "v25.0"  # Meta Graph API version
+    # An approved message template for trips logged by the car. A plain text
+    # is only deliverable within 24 hours of the driver's last message; a trip
+    # the car reported is exactly the message nobody prompted, so without a
+    # template every such notification is accepted by Meta and then dropped
+    # (error 131047). Body parameters, in order: car label, origin,
+    # destination, km, purpose, odometer. Empty = send plain text.
+    whatsapp_trip_template: str = ""
+    whatsapp_trip_template_language: str = "en"
     allowed_sender: str = ""  # E.164 without '+', e.g. 31612345678
     # Admin numbers (comma-separated, E.164 without '+') who can approve joins.
     admin_numbers: str = ""
