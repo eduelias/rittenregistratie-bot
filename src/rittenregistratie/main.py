@@ -107,13 +107,38 @@ async def vehicle_hook(plugin: str, car_id: str, request: Request) -> Response:
     graph_url = f"https://graph.facebook.com/{_settings.whatsapp_graph_version}"
     notified = []
     for phone in car.phones:
-        ok = await whatsapp.send_message(
-            _settings.whatsapp_token, _settings.whatsapp_phone_number_id,
-            phone, reply, graph_url=graph_url,
-        )
+        ok = await _notify_trip(phone, reply, graph_url)
         notified.append({"to": phone, "delivered": ok})
     log.info("Vehicle trip logged for %s via %s (odo %s).", car_id, plugin, result.end_odo)
     return JSONResponse({"status": "logged", "end_odo": result.end_odo, "notified": notified})
+
+
+async def _notify_trip(phone: str, reply, graph_url: str) -> bool:
+    """Tell the driver about a trip the car logged.
+
+    Nobody texted the bot first, so a plain message is only deliverable inside
+    the 24-hour window since the driver's last message - and with the car
+    doing the logging, that window rarely reopens. When a template is
+    configured it is used; if the send is refused (not yet approved, wrong
+    parameter count) the plain text goes out instead, so a broken template
+    degrades to today's behaviour rather than to silence.
+    """
+    token, pid = _settings.whatsapp_token, _settings.whatsapp_phone_number_id
+    name = (_settings.whatsapp_trip_template or "").strip()
+    facts = getattr(reply, "facts", None)
+    if name and facts:
+        params = [facts["label"], facts["origin"], facts["destination"],
+                  facts["km"], facts["purpose"], facts["odometer"]]
+        if await whatsapp.send_template(
+            token, pid, phone, name, params,
+            language=_settings.whatsapp_trip_template_language, graph_url=graph_url,
+        ):
+            return True
+        log.warning("Template %r was refused for %s; sending plain text instead.", name, phone)
+    return await whatsapp.send_message(token, pid, phone, reply, graph_url=graph_url)
+
+
+_waba_logged = False
 
 
 @app.get("/webhook")
@@ -137,6 +162,13 @@ async def webhook(request: Request) -> Response:
 
     body = await request.json()
 
+    global _waba_logged
+    if not _waba_logged:
+        waba = whatsapp.extract_waba_id(body)
+        if waba:
+            log.info("Webhook is for WhatsApp Business Account %s.", waba)
+            _waba_logged = True
+
     # Log delivery/read/failed status receipts (when subscribed to 'statuses').
     for st in whatsapp.extract_statuses(body):
         if st.get("error"):
@@ -144,6 +176,13 @@ async def webhook(request: Request) -> Response:
                 "Message %s to %s: %s (%s)",
                 st.get("id"), st.get("recipient"), st.get("status"), st["error"],
             )
+            if st.get("code") == 131047:
+                log.warning(
+                    "HINT: 131047 means the recipient has not messaged the bot in "
+                    "24 hours, so a plain text cannot be delivered. Trips logged by "
+                    "the car need RIT_WHATSAPP_TRIP_TEMPLATE set to an approved "
+                    "template; the trip itself was recorded."
+                )
         else:
             log.info(
                 "Message %s to %s: %s",

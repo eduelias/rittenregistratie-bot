@@ -116,11 +116,16 @@ class Reply(str):
 
     logged: bool
     notice: bool
+    facts: Optional[dict]
 
-    def __new__(cls, text: str = "", *, logged: bool = False, notice: bool = False):
+    def __new__(cls, text: str = "", *, logged: bool = False, notice: bool = False,
+                facts: Optional[dict] = None):
         obj = super().__new__(cls, text)
         obj.logged = logged
         obj.notice = notice
+        # The trip as data (label, origin, destination, km, purpose, odometer),
+        # for a transport that sends a template rather than this text.
+        obj.facts = facts
         return obj
 
 

@@ -63,6 +63,18 @@ def extract_message(body: dict) -> Optional[dict]:
         return None
 
 
+def extract_waba_id(body: dict) -> Optional[str]:
+    """The WhatsApp Business Account id a webhook came from (``entry[].id``).
+
+    Not derivable from a system-user token through the API, and needed to
+    manage templates - so the first webhook is the easiest place to learn it.
+    """
+    try:
+        return str(body["entry"][0]["id"]) or None
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
 def extract_statuses(body: dict) -> list:
     """Return delivery/read/failed status events from a webhook payload.
 
@@ -80,6 +92,7 @@ def extract_statuses(body: dict) -> list:
                 "status": s.get("status"),
                 "recipient": s.get("recipient_id"),
                 "error": (errs[0].get("title") if errs else None),
+                "code": (errs[0].get("code") if errs else None),
             })
     except (KeyError, IndexError, TypeError):
         pass
@@ -160,6 +173,36 @@ async def send_message(
             "text": {"body": text},
         },
         graph_url, "reply",
+    )
+
+
+async def send_template(
+    token: str, phone_number_id: str, to: str, name: str, params: list,
+    language: str = "en", graph_url: str = GRAPH_URL,
+) -> bool:
+    """Send an approved message template with positional body parameters.
+
+    A free-form text can only be delivered within 24 hours of the recipient's
+    last message (Meta error 131047, "Re-engagement message", outside it). A
+    template has no such window, which is what a notification the recipient
+    did not prompt - a trip logged by the car - needs.
+    """
+    return await _post_message(
+        token, phone_number_id,
+        {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "template",
+            "template": {
+                "name": name,
+                "language": {"code": language},
+                "components": [{
+                    "type": "body",
+                    "parameters": [{"type": "text", "text": str(p)} for p in params],
+                }],
+            },
+        },
+        graph_url, f"template {name}",
     )
 
 
