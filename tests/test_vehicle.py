@@ -209,3 +209,20 @@ def test_hook_logs_trip_and_notifies_all_car_phones(hook_client):
         {"from": "31600000000", "id": "w1", "type": "text", "text": {"body": "20087 spg"}}]}}]}]}
     client.post("/webhook", json=msg)
     assert any("Already logged" in t for _, t in sent)
+
+
+def test_a_car_logged_trip_keeps_its_facts_for_the_template(settings):
+    """The vehicle path re-wraps the reply; the facts must survive the wrap.
+
+    They did not once: every car-logged trip then went out as plain text and was
+    dropped with 131047, while the template configured to prevent exactly that
+    sat unused.
+    """
+    eng = Engine(settings)
+    car = eng.cars.get("mercedes")
+    r = eng.handle_vehicle_trip(car, VehicleTripReport(end_odo=20100, zone="spg"))
+    assert r.facts == {"label": "Mercedes", "origin": "Home", "destination": "spg",
+                       "km": 100, "purpose": "business", "odometer": 20100}
+    # An unknown place appends a teaching hint; the facts still ride along.
+    r2 = eng.handle_vehicle_trip(car, VehicleTripReport(end_odo=20140, latitude=51.0, longitude=5.0))
+    assert r2.facts and r2.facts["odometer"] == 20140 and "name <place>" in str(r2)
