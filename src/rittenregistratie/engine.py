@@ -295,7 +295,10 @@ class Engine:
             state.last_unnamed = None
             extra = ""
         store.save(state)
-        return Reply(str(reply) + extra, logged=True, notice=bool(extra) or reply.notice)
+        # Keep the facts: the template that announces a car-logged trip is
+        # filled from them, and this is the only reply that ever reaches it.
+        return Reply(str(reply) + extra, logged=True, notice=bool(extra) or reply.notice,
+                     facts=reply.facts)
 
     # --- onboarding ---------------------------------------------------
     def reload_cars(self) -> None:
