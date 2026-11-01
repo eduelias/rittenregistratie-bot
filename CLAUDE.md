@@ -68,6 +68,10 @@ No ruff config here (unlike the private-plugins sibling) — CI runs pytest only
 - `billing.py` + `site.py` (+ `site/*.html`) — rrbot.nl landing page and paid
   signup through Mollie: first payment → subscription → car with
   `subscription:` in cars.yaml. See `docs/subscriptions.md`.
+- `i18n.py` — every bot text in Dutch and English (`CATALOG`), language per
+  number (`data/languages.json`, `taal`/`language` command), default
+  `RIT_DEFAULT_LANGUAGE=nl`. Use `t("key", ...)`, never a literal reply. Tests
+  run in English unless the module sets `BOT_LANGUAGE = "nl"` (conftest.py).
 - `analytics.py` — cookieless daily page counts (`data/analytics.json`) and the
   subscription funnel; admin `stats [days]`, weekly report via famulus.
 - `retention.py` — deletes former subscribers' trip data after

@@ -117,16 +117,28 @@ class Reply(str):
     logged: bool
     notice: bool
     facts: Optional[dict]
+    parts: Optional[list]
 
     def __new__(cls, text: str = "", *, logged: bool = False, notice: bool = False,
-                facts: Optional[dict] = None):
+                facts: Optional[dict] = None, parts: Optional[list] = None):
         obj = super().__new__(cls, text)
         obj.logged = logged
         obj.notice = notice
         # The trip as data (label, origin, destination, km, purpose, odometer),
         # for a transport that sends a template rather than this text.
         obj.facts = facts
+        # How the text was built (i18n catalog keys), so a reply that goes to
+        # several people can be rendered in each one's language: in_lang().
+        obj.parts = parts
         return obj
+
+    def in_lang(self, lang: str) -> "Reply":
+        """This reply in ``lang`` (itself when it has no parts)."""
+        if not self.parts:
+            return self
+        from .i18n import render_parts
+        return Reply(render_parts(self.parts, lang), logged=self.logged, notice=self.notice,
+                     facts=self.facts, parts=self.parts)
 
 
 @dataclass

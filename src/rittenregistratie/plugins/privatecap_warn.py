@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import List
 
+from ..i18n import t
 from ..models import CapAction, Trip
 from .base import PrivateCapPlugin
 
@@ -22,13 +23,8 @@ class WarnPlugin(PrivateCapPlugin):
         if private_total_km > cap_km:
             over = private_total_km - cap_km
             return CapAction(
-                message=(
-                    f"WARNING: private {private_total_km} km exceeds the "
-                    f"{cap_km} km cap by {over} km for {year}."
-                ),
+                message=t("cap.over", km=private_total_km, cap=cap_km, over=over, year=year),
                 important=True,
             )
         remaining = cap_km - private_total_km
-        return CapAction(
-            message=f"Private {private_total_km}/{cap_km} km ({remaining} km left)."
-        )
+        return CapAction(message=t("cap.status", km=private_total_km, cap=cap_km, left=remaining))

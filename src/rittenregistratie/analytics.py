@@ -197,14 +197,15 @@ def funnel(signups: Iterable[Signup], settings: Settings, start: date, end: date
 # --- report ------------------------------------------------------------------
 
 def _eur(v: float) -> str:
-    return f"€ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"€{v:,.2f}"
 
 
 def _top(c: Counter, n: int = 3) -> str:
-    return ", ".join(f"{k} {v}" for k, v in c.most_common(n)) or "geen"
+    return ", ".join(f"{k} {v}" for k, v in c.most_common(n)) or "none"
 
 
 def report(settings: Settings, days: int = 7, today: Optional[date] = None) -> str:
+    """The owner's summary. Always English, whatever language the owner chose."""
     today = today or date.today()
     start = today - timedelta(days=days - 1)
     host = urlsplit(settings.public_base_url).hostname or ""
@@ -213,35 +214,34 @@ def report(settings: Settings, days: int = 7, today: Optional[date] = None) -> s
     views = t["views"]
     home = views.get("/", 0)
     lines = [
-        f"RittenRegistratie-bot, laatste {days} dagen ({start:%d-%m} t/m {today:%d-%m})",
+        f"RittenRegistratie-bot, last {days} days ({start:%d %b} to {today:%d %b})",
         "",
-        f"Site: {sum(views.values())} paginaweergaven, waarvan {home} op de homepage"
+        f"Site: {sum(views.values())} page views, {home} on the homepage"
         + (f" (+{t['bots']} bots)" if t["bots"] else ""),
-        f"Verwijzers: {_top(t['referrers'])}",
+        f"Referrers: {_top(t['referrers'])}",
     ]
     if t["sources"] or t["campaigns"]:
-        lines.append(f"Campagnes: {_top(t['campaigns'] + t['sources'])}")
-    rate = f" ({f['paid_first'] / home:.0%} van homepage)" if home else ""
+        lines.append(f"Campaigns: {_top(t['campaigns'] + t['sources'])}")
+    rate = f" ({f['paid_first'] / home:.0%} of homepage views)" if home else ""
     lines += [
         "",
-        f"Funnel: {t['forms']} formulieren → {f['started']} naar betalen → "
-        f"{f['paid_first']} machtiging betaald{rate}",
+        f"Funnel: {t['forms']} forms -> {f['started']} to payment -> "
+        f"{f['paid_first']} mandates paid{rate}",
     ]
     if f["failed"] or f["pending"]:
-        lines.append(f"  niet afgerond: {f['failed']} mislukt, {f['pending']} open")
+        lines.append(f"  not completed: {f['failed']} failed, {f['pending']} open")
     if f["trials_ended"]:
-        lines.append(f"Proefperiodes afgelopen: {f['trials_ended']}, "
-                     f"waarvan {f['trials_converted']} betaald")
+        lines.append(f"Trials ended: {f['trials_ended']}, {f['trials_converted']} converted to paid")
     if f["paused"] or f["cancelled"]:
-        lines.append(f"Gepauzeerd: {f['paused']}, opgezegd: {f['cancelled']}")
+        lines.append(f"Paused: {f['paused']}, cancelled: {f['cancelled']}")
     lines += [
         "",
-        f"Nu: {f['active']} actief ({f['in_trial']} in proef, {f['monthly']} maand, "
-        f"{f['yearly']} jaar), {f['paused_now']} gepauzeerd",
-        f"MRR: {_eur(f['mrr_paying'])} betalend, {_eur(f['mrr_incl_trial'])} incl. proef",
+        f"Now: {f['active']} active ({f['in_trial']} in trial, {f['monthly']} monthly, "
+        f"{f['yearly']} yearly), {f['paused_now']} paused",
+        f"MRR: {_eur(f['mrr_paying'])} paying, {_eur(f['mrr_incl_trial'])} incl. trials",
     ]
     if f["attention"]:
-        lines.append(f"Let op: {f['attention']} betaalde aanmelding(en) wachten op jou.")
+        lines.append(f"Attention: {f['attention']} paid signup(s) waiting for you.")
     return "\n".join(lines)
 
 

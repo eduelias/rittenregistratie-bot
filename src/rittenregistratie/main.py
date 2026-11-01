@@ -15,6 +15,7 @@ from .engine import Engine, EngineError, ExportRequest, UnknownCarError
 from .billing import Billing, Mollie, MollieError
 from .events import hook_event
 from .export import ExportError
+from .i18n import parse_language_command, set_current, t
 from .models import VehicleTripReport
 from .parser import ParseError
 from .site import build_router
@@ -48,7 +49,7 @@ async def _subscription_reply(sender: str, text: str) -> str | None:
         return await _billing.handle(sender, text)
     except MollieError:
         log.exception("subscription command failed")
-        return "Dat lukte nu niet. Probeer het later nog eens, of mail ons."
+        return t("sub.failed")
 
 
 @app.get("/health")
@@ -134,13 +135,15 @@ async def vehicle_hook(plugin: str, car_id: str, request: Request) -> Response:
     graph_url = f"https://graph.facebook.com/{_settings.whatsapp_graph_version}"
     notified = []
     for phone in car.phones:
-        ok = await _notify_trip(phone, reply, graph_url)
+        lang = _engine.languages.of(phone)
+        set_current(lang)
+        ok = await _notify_trip(phone, reply.in_lang(lang), graph_url, lang)
         notified.append({"to": phone, "delivered": ok})
     log.info("Vehicle trip logged for %s via %s (odo %s).", car_id, plugin, result.end_odo)
     return JSONResponse({"status": "logged", "end_odo": result.end_odo, "notified": notified})
 
 
-async def _notify_trip(phone: str, reply, graph_url: str) -> bool:
+async def _notify_trip(phone: str, reply, graph_url: str, lang: str = "") -> bool:
     """Tell the driver about a trip the car logged.
 
     Nobody texted the bot first, so a plain message is only deliverable inside
@@ -154,14 +157,19 @@ async def _notify_trip(phone: str, reply, graph_url: str) -> bool:
     name = (_settings.whatsapp_trip_template or "").strip()
     facts = getattr(reply, "facts", None)
     if name and facts:
-        params = [facts["label"], facts["origin"], facts["destination"],
-                  facts["km"], facts["purpose"], facts["odometer"]]
-        if await whatsapp.send_template(
-            token, pid, phone, name, params,
-            language=_settings.whatsapp_trip_template_language, graph_url=graph_url,
-        ):
-            return True
-        log.warning("Template %r was refused for %s; sending plain text instead.", name, phone)
+        # The template in the driver's language if Meta has that translation,
+        # else in the configured one; the purpose word follows the template.
+        tried = []
+        for code in dict.fromkeys(c for c in (lang, _settings.whatsapp_trip_template_language) if c):
+            params = [facts["label"], facts["origin"], facts["destination"], facts["km"],
+                      t(f"purpose.{facts['purpose']}", "en" if code.startswith("en") else "nl"),
+                      facts["odometer"]]
+            if await whatsapp.send_template(token, pid, phone, name, params,
+                                            language=code, graph_url=graph_url):
+                return True
+            tried.append(code)
+        log.warning("Template %r (%s) was refused for %s; sending plain text instead.",
+                    name, "/".join(tried), phone)
     return await whatsapp.send_message(token, pid, phone, reply, graph_url=graph_url)
 
 
@@ -225,6 +233,17 @@ async def webhook(request: Request) -> Response:
     message_id = msg.get("id")
     location = msg.get("location")
     text = msg.get("text")
+    # Everything below answers in the sender's language (i18n.py).
+    set_current(_engine.languages.of(sender))
+
+    # 'taal' / 'language' / 'english' / 'nederlands': works for every number.
+    is_lang_cmd, chosen = parse_language_command(text or "")
+    if is_lang_cmd:
+        if chosen:
+            _engine.languages.set(sender, chosen)
+            set_current(chosen)
+        await _send_all(sender, t("lang.set" if chosen else "lang.show"), [])
+        return Response(status_code=200, content="ok")
 
     # Extra reply recipients (e.g. notify admins of a new join request).
     extra_notify: list[tuple[str, str]] = []
@@ -254,18 +273,18 @@ async def webhook(request: Request) -> Response:
 
     if is_admin and admin_cmd:
         try:
+            from .cars import normalize_phone
+            approved = normalize_phone(admin_args[0]) if admin_cmd == "approve" and admin_args else ""
+            was_registered = bool(approved) and _engine.cars.is_registered(approved)
             reply = _engine.handle_admin_command(admin_cmd, admin_args)
-            # If a user was just approved, welcome them too.
-            if admin_cmd == "approve" and reply.startswith("Approved") and admin_args:
-                from .cars import normalize_phone
+            # If a user was just approved, welcome them too, in their language.
+            if approved and not was_registered and _engine.cars.is_registered(approved):
                 extra_notify.append((
-                    normalize_phone(admin_args[0]),
-                    "You're approved! Send '<odometer> <destination>' to log a "
-                    "trip, or 'ping' to test. First message sets your car's start.",
+                    approved, t("onboard.approved", _engine.languages.of(approved)),
                 ))
         except Exception:  # pragma: no cover
             log.exception("admin command failed")
-            reply = "Admin command failed."
+            reply = t("admin.failed")
     elif not is_registered:
         # A former subscriber (car removed when the subscription ended) may
         # restart with the same ledger; anything else gets the ended notice.
@@ -279,27 +298,18 @@ async def webhook(request: Request) -> Response:
             return Response(status_code=200, content="ok")
         if _billing is not None:
             # With paid signup, the website is the way in; no join requests.
-            await _send_all(sender, (
-                "Hoi! Dit is RittenRegistratie-bot, je rittenregistratie via WhatsApp. Dit nummer is nog "
-                f"niet aangemeld. Probeer het 14 dagen gratis: {_settings.signup_url}"
-            ), extra_notify)
+            await _send_all(sender, t("onboard.signup", url=_settings.signup_url), extra_notify)
             return Response(status_code=200, content="ok")
         if _engine.onboarding.has(sender):
-            reply = "Your request to join is still pending admin approval. Hang tight!"
+            reply = t("onboard.pending")
         else:
             _engine.register_join_request(sender, text or "(non-text message)")
-            reply = (
-                "Hi! This is RittenRegistratie-Bot. Your number isn't registered "
-                "yet. I've sent a join request to the admin — you'll get a message "
-                "when you're approved."
-            )
+            reply = t("onboard.requested")
             for admin in _settings.admin_list():
-                extra_notify.append((
-                    admin,
-                    f"New join request from {sender}: \"{(text or '')[:60]}\".\n"
-                    f"Approve: approve {sender} <label> <seed_odo> [address]\n"
-                    f"Or: deny {sender}",
-                ))
+                extra_notify.append((admin, t(
+                    "admin.join_request", _engine.languages.of(admin),
+                    sender=sender, message=(text or "")[:60],
+                )))
         # send onboarding reply + notifications below
         await _send_all(sender, reply, extra_notify)
         return Response(status_code=200, content="ok")
@@ -321,7 +331,7 @@ async def webhook(request: Request) -> Response:
         try:
             export_req = _engine.parse_export_command(text or "", sender)
         except (EngineError, UnknownCarError) as exc:
-            await _send_all(sender, f"Could not export: {exc}", extra_notify)
+            await _send_all(sender, t("export.could_not", error=exc), extra_notify)
             return Response(status_code=200, content="ok")
         if export_req is not None:
             await _ack_export(sender, message_id)
@@ -349,15 +359,12 @@ async def webhook(request: Request) -> Response:
             elif text:
                 reply = _engine.handle_text(text, sender)
             else:
-                reply = (
-                    "Please send: <odometer> <destination> [private], "
-                    "or share a location when asked."
-                )
+                reply = t("trip.usage")
         except (ParseError, EngineError, UnknownCarError) as exc:
-            reply = f"Could not log trip: {exc}"
+            reply = t("trip.could_not", error=exc)
         except Exception:  # pragma: no cover - defensive
             log.exception("Unexpected error handling message")
-            reply = "Internal error while logging the trip."
+            reply = t("trip.internal")
 
     await _send_all(sender, reply, extra_notify, message_id=message_id)
     return Response(status_code=200, content="ok")
@@ -420,7 +427,7 @@ async def _ack_export(sender: str, message_id: str | None) -> None:
             return
     await whatsapp.send_message(
         _settings.whatsapp_token, _settings.whatsapp_phone_number_id,
-        sender, "Generating your spreadsheet\u2026", graph_url=graph_url,
+        sender, t("export.generating"), graph_url=graph_url,
     )
 
 
@@ -429,6 +436,8 @@ async def _run_export(sender: str, req: ExportRequest) -> None:
     graph_url = f"https://graph.facebook.com/{_settings.whatsapp_graph_version}"
     token, pid = _settings.whatsapp_token, _settings.whatsapp_phone_number_id
 
+    set_current(_engine.languages.of(sender))  # runs after the response
+
     async def tell(text: str) -> None:
         await whatsapp.send_message(token, pid, sender, text, graph_url=graph_url)
 
@@ -436,25 +445,24 @@ async def _run_export(sender: str, req: ExportRequest) -> None:
         try:
             result = await asyncio.to_thread(_engine.exporter.generate, req.car.car_id, year)
         except ExportError as exc:
-            await tell(f"Export {year} failed: {exc}")
+            await tell(t("export.failed", year=year, error=exc))
             continue
         except Exception:  # pragma: no cover - defensive
             log.exception("export failed for %s %s", req.car.car_id, year)
-            await tell(f"Export {year} failed: internal error.")
+            await tell(t("export.failed_internal", year=year))
             continue
         media_id = await whatsapp.upload_media(token, pid, result.path, graph_url=graph_url)
         if not media_id:
-            await tell(f"Export {year} is ready but the upload to WhatsApp failed.")
+            await tell(t("export.upload_failed", year=year))
             continue
-        caption = f"{req.car.label} \u2014 {year} \u2014 {result.rows} trips"
+        caption = t("export.caption", label=req.car.label, year=year, rows=result.rows)
         if result.handlers:
-            caption += f" (processed by {result.handlers} plugin"
-            caption += "s)" if result.handlers != 1 else ")"
+            caption += t("export.plugins", n=result.handlers, s="s" if result.handlers != 1 else "")
         sent = await whatsapp.send_document(
             token, pid, sender, media_id, result.path.name, caption=caption,
             graph_url=graph_url,
         )
         if not sent:
-            await tell(f"Export {year} is ready but could not be sent.")
+            await tell(t("export.not_sent", year=year))
         else:
             log.info("Export %s/%s sent to %s (%s rows).", req.car.car_id, year, sender, result.rows)

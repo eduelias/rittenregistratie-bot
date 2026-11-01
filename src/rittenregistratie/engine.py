@@ -21,6 +21,7 @@ from typing import Dict, List, Optional
 from .cars import ActiveCarStore, Car, CarRegistry
 from .config import Settings, load_yaml, save_location
 from .events import EventBus, load_event_plugins
+from .i18n import Key, LanguageStore, render_parts, set_default, t
 from .export import ExportService
 from .models import (
     ParsedMessage,
@@ -48,23 +49,14 @@ class UnknownCarError(EngineError):
 
 
 # Replies (case-insensitive) that drop a trip waiting for an address.
-_CANCEL_WORDS = frozenset({"cancel", "/cancel", "skip", "stop", "annuleer"})
+_CANCEL_WORDS = frozenset({"cancel", "/cancel", "skip", "stop", "annuleer", "annuleren"})
 _HAS_LETTER_RE = re.compile(r"[^\W\d_]")
 # A registered driver's first message is usually a greeting (the website's
 # WhatsApp link pre-fills "start"); answer it with how the bot works instead
 # of failing to parse it as a trip.
 _HELP_WORDS = ("start", "help", "hulp", "hallo", "hoi", "hi", "hello")
-_USER_HELP = (
-    "Welkom bij RittenRegistratie ({label}).\n"
-    "Stuur na elke rit je kilometerstand en bestemming:\n"
-    "  45230 Kantoor\n"
-    "  45260 Thuis privé\n"
-    "Onbekende bestemming? Ik vraag één keer om het adres.\n"
-    "'excel' stuurt je rittenoverzicht van dit jaar, 'excel 2025' een ander jaar.\n"
-    "'abonnement' toont je abonnement met een genummerd menu (antwoord met 1, 2, ...).\n"
-    "Direct kan ook: 'pauzeren', 'hervatten', 'opzeggen', 'opnieuw', "
-    "'maandelijks' of 'jaarlijks' (overstappen)."
-)
+# Dutch spellings of the car commands.
+_CAR_ALIASES = {"auto": "car", "autos": "cars", "auto's": "cars", "naam": "name"}
 # Commands that request a spreadsheet: "excel", "excel 2025", "excel all",
 # and for admins "excel <car_id> [year|all]".
 _EXPORT_WORDS = frozenset({"excel", "export", "xlsx", "sheet", "spreadsheet"})
@@ -88,6 +80,8 @@ class Engine:
         from .onboarding import OnboardingStore
         self.onboarding = OnboardingStore(settings.onboarding_file)
         self.active_cars = ActiveCarStore(settings.active_car_file)
+        self.languages = LanguageStore(settings.languages_file)
+        set_default(settings.default_language)
 
         # Instantiate configured plugins (shared across cars). Any trajectory
         # provider whose constructor accepts an ``api_key`` parameter receives
@@ -211,29 +205,23 @@ class Engine:
                 car = self.cars.find(hint)
             if car is None:
                 raise EngineError(
-                    f"Unknown car '{hint}'. Your cars: {self._car_list(own)}."
-                    if own else f"Unknown car '{hint}'."
+                    t("car.unknown_list", hint=hint, cars=self._car_list(own))
+                    if own else t("car.unknown", hint=hint)
                 )
             return car
         if not own:
-            raise UnknownCarError(
-                f"Number {sender} is not registered to any car."
-            )
+            raise UnknownCarError(t("car.not_registered", phone=sender))
         if len(own) == 1:
             return own[0]
         active = self.active_cars.get(sender)
         car = next((c for c in own if c.car_id == active), None)
         if car is None:
-            raise EngineError(
-                f"You report for several cars: {self._car_list(own)}. Send "
-                "'car <id>' to choose one, or start the message with the car "
-                "id, e.g. '{0} 145230 Office'.".format(own[0].car_id)
-            )
+            raise EngineError(t("car.several", cars=self._car_list(own), example=own[0].car_id))
         return car
 
     @staticmethod
     def _car_list(cars: List[Car]) -> str:
-        return ", ".join(f"{c.label} [{c.car_id}]" for c in cars) or "none"
+        return ", ".join(f"{c.label} [{c.car_id}]" for c in cars) or t("car.none")
 
     def _split_car_prefix(self, text: str, sender: str) -> tuple[Optional[Car], str]:
         """``van 302050 Office`` -> (van, "302050 Office"); else (None, text)."""
@@ -251,28 +239,29 @@ class Engine:
         if not parts:
             return None
         cmd = parts[0].lower().lstrip("/")
+        cmd = _CAR_ALIASES.get(cmd, cmd)
         if cmd not in ("cars", "car", "name") + _HELP_WORDS:
             return None
         own = self.cars.cars_for(sender)
         if not own:
-            raise UnknownCarError(f"Number {sender} is not registered to any car.")
+            raise UnknownCarError(t("car.not_registered", phone=sender))
         if cmd in _HELP_WORDS:
-            return Reply(_USER_HELP.format(label=own[0].label))
+            return Reply(t("help.user", label=own[0].label))
         if cmd == "name":
             return self._name_last_unnamed(sender, " ".join(parts[1:]).strip())
         if cmd == "car" and len(parts) > 1:
             car = self.resolve_car(sender, " ".join(parts[1:]))
             if car not in own:
-                raise EngineError("You can only activate one of your own cars.")
+                raise EngineError(t("car.only_own"))
             self.active_cars.set(sender, car.car_id)
-            return Reply(f"Active car: {car.label} [{car.car_id}].")
+            return Reply(t("car.active", label=car.label, id=car.car_id))
         active = self.active_cars.get(sender) if len(own) > 1 else own[0].car_id
-        lines = ["Your cars:"]
+        lines = [t("car.list")]
         for c in own:
-            mark = " (active)" if c.car_id == active else ""
+            mark = t("car.active_mark") if c.car_id == active else ""
             lines.append(f"- {c.label} [{c.car_id}]{mark}")
         if len(own) > 1:
-            lines.append("Switch with 'car <id>' or prefix a message with the car id.")
+            lines.append(t("car.switch_hint"))
         return Reply("\n".join(lines))
 
     def _name_last_unnamed(self, sender: str, place: str) -> Reply:
@@ -282,14 +271,14 @@ class Engine:
         store = StateStore(self.settings.state_file(car.car_id))
         state = store.seed_if_empty(car.seed_address, car.seed_odometer)
         if not place:
-            return Reply("Usage: name <place>  (names the last unnamed trip end).")
+            return Reply(t("name.usage"))
         if not state.last_unnamed:
-            return Reply("Nothing to name: the last automatic trip ended at a known place.")
+            return Reply(t("name.nothing"))
         info = state.last_unnamed
         self._learn(car, place, info["address"], lat=info.get("lat"), lon=info.get("lon"))
         state.last_unnamed = None
         store.save(state)
-        return Reply(f"Saved '{place}': {info['address']}. Future trips ending there will use it.")
+        return Reply(t("name.saved", place=place, address=info["address"]))
 
     # --- vehicle telemetry ------------------------------------------------
     def _place_for(self, car: Car, report: VehicleTripReport) -> tuple[Optional[str], str, bool]:
@@ -354,15 +343,17 @@ class Engine:
             state.last_unnamed = {
                 "address": address, "lat": report.latitude, "lon": report.longitude,
             }
-            extra = "\nI don't know this place. Reply 'name <place>' to teach me it."
+            extra = [("vehicle.unknown_place", {})]
         else:
             state.last_unnamed = None
-            extra = ""
+            extra = []
         store.save(state)
         # Keep the facts: the template that announces a car-logged trip is
         # filled from them, and this is the only reply that ever reaches it.
-        return Reply(str(reply) + extra, logged=True, notice=bool(extra) or reply.notice,
-                     facts=reply.facts)
+        # Keep the parts: every driver of the car gets it in their language.
+        parts = list(reply.parts or [str(reply)]) + extra
+        return Reply(render_parts(parts), logged=True, notice=bool(extra) or reply.notice,
+                     facts=reply.facts, parts=parts)
 
     # --- onboarding ---------------------------------------------------
     def reload_cars(self) -> None:
@@ -414,22 +405,10 @@ class Engine:
         )
 
         if cmd == "help":
-            return (
-                "Admin commands:\n"
-                "pending — list join requests\n"
-                "approve <number> <label> <seed_odo> [address...] — add a car "
-                "for a number (a number may have several cars)\n"
-                "assign <number> <car_id> — let a number report for an existing car\n"
-                "unassign <number> <car_id> — undo assign\n"
-                "deny <number> — reject a request\n"
-                "list — list cars, numbers and plugins\n"
-                "remove <number|car_id> — remove a car, or a number from all cars\n"
-                "Everyone: cars — list your cars; car <id> — choose the active one; "
-                "excel [car] [year|all] — spreadsheet."
-            )
+            return t("admin.help")
         if cmd == "list":
             cars = self.cars.all()
-            lines = [f"Registered cars ({len(cars)}/{self.settings.max_users}):"]
+            lines = [t("admin.list", n=len(cars), max=self.settings.max_users)]
             for car in cars:
                 plugins = []
                 if car.event_plugins is not None:
@@ -437,34 +416,29 @@ class Engine:
                 if car.cap_plugin:
                     plugins.append(f"cap={car.cap_plugin}")
                 extra = f" [{'; '.join(plugins)}]" if plugins else ""
-                lines.append(
-                    f"- {car.label} [{car.car_id}] {', '.join(car.phones) or 'no numbers'} "
-                    f"(seed {car.seed_odometer} km){extra}"
-                )
+                lines.append(t("admin.list_line", label=car.label, id=car.car_id,
+                               phones=", ".join(car.phones) or t("admin.no_numbers"),
+                               seed=car.seed_odometer, extra=extra))
             return "\n".join(lines)
         if cmd == "remove":
             if not args:
-                return "Usage: remove <number|car_id>"
+                return t("admin.remove_usage")
             result = remove_car_from_yaml(self.settings.cars_file, args[0])
             if not result:
-                return f"No car or number found for '{args[0]}'."
+                return t("admin.remove_none", what=args[0])
             self.reload_cars()
             parts = []
             if result.removed_cars:
-                parts.append(
-                    "Removed car(s) " + ", ".join(f"'{c}'" for c in result.removed_cars)
-                    + ". Their ledger and state files are kept on disk."
-                )
+                parts.append(t("admin.removed_cars",
+                               cars=", ".join(f"'{c}'" for c in result.removed_cars)))
             detached = [c for c in result.detached_from if c not in result.removed_cars]
             if detached:
-                parts.append(
-                    f"Number {normalize_phone(args[0])} no longer reports for "
-                    + ", ".join(f"'{c}'" for c in detached) + "."
-                )
+                parts.append(t("admin.detached", phone=normalize_phone(args[0]),
+                               cars=", ".join(f"'{c}'" for c in detached)))
             return " ".join(parts)
         if cmd in ("assign", "unassign"):
             if len(args) < 2:
-                return f"Usage: {cmd} <number> <car_id>"
+                return t("admin.assign_usage", cmd=cmd)
             phone, car_id = normalize_phone(args[0]), args[1]
             try:
                 if cmd == "assign":
@@ -472,51 +446,40 @@ class Engine:
                 else:
                     changed = remove_phone_from_car_yaml(self.settings.cars_file, car_id, phone)
             except ValueError as exc:
-                return f"Could not {cmd}: {exc}"
+                return t("admin.assign_failed", cmd=cmd, error=exc)
             self.reload_cars()
             self.onboarding.remove(phone)
             if cmd == "assign":
-                return (f"{phone} now reports for '{car_id}'." if changed
-                        else f"{phone} already reports for '{car_id}'.")
-            return (f"{phone} no longer reports for '{car_id}'." if changed
-                    else f"{phone} was not assigned to '{car_id}'.")
+                return t("admin.assigned" if changed else "admin.already_assigned",
+                         phone=phone, car=car_id)
+            return t("admin.unassigned" if changed else "admin.not_assigned",
+                     phone=phone, car=car_id)
         if cmd == "pending":
             reqs = self.onboarding.list()
             if not reqs:
-                return "No pending join requests."
-            lines = ["Pending join requests:"]
+                return t("admin.no_pending")
+            lines = [t("admin.pending")]
             for r in reqs:
                 lines.append(f"- {r.phone}: \"{r.first_message[:40]}\" ({r.requested_at})")
-            lines.append("\nApprove: approve <number> <label> <seed_odo> [address]")
+            lines.append(t("admin.pending_hint"))
             return "\n".join(lines)
         if cmd == "deny":
             if not args:
-                return "Usage: deny <number>"
+                return t("admin.deny_usage")
             phone = normalize_phone(args[0])
-            return (
-                f"Denied and removed request from {phone}."
-                if self.onboarding.remove(phone)
-                else f"No pending request from {phone}."
-            )
+            return t("admin.denied" if self.onboarding.remove(phone) else "admin.no_request",
+                     phone=phone)
         if cmd == "approve":
             if len(args) < 3:
-                return (
-                    "Usage: approve <number> <label> <seed_odo> [address...]\n"
-                    "e.g. approve 31612345678 \"Alice Golf\" 45000 Home"
-                )
+                return t("admin.approve_usage")
             phone = normalize_phone(args[0])
             # label may be quoted; support simple quoted first token or single word
             rest = args[1:]
             label, seed_odo, address = self._parse_approve_args(rest)
             if seed_odo is None:
-                return "Could not find the seed odometer (a number). " \
-                       "Usage: approve <number> <label> <seed_odo> [address]"
+                return t("admin.no_seed")
             if len(self.cars.all()) >= self.settings.max_users:
-                return (
-                    f"User limit reached ({self.settings.max_users}). "
-                    f"Remove a user first (remove <number>) or raise "
-                    f"RIT_MAX_USERS."
-                )
+                return t("admin.full", max=self.settings.max_users)
             existing = [c.car_id for c in self.cars.all()]
             car_id = slugify_car_id(label, existing)
             try:
@@ -525,14 +488,12 @@ class Engine:
                     address or self.settings.seed_address, seed_odo, phone,
                 )
             except ValueError as exc:
-                return f"Could not add: {exc}"
+                return t("admin.add_failed", error=exc)
             self.onboarding.remove(phone)
             self.reload_cars()
-            return (
-                f"Approved {phone} as '{label}' (car id: {car_id}, "
-                f"seed {seed_odo} km at {address or self.settings.seed_address})."
-            )
-        return "Unknown command. Send 'help'."
+            return t("admin.approved", phone=phone, label=label, id=car_id, seed=seed_odo,
+                     address=address or self.settings.seed_address)
+        return t("admin.unknown")
 
     @staticmethod
     def _parse_approve_args(rest: list):
@@ -579,7 +540,7 @@ class Engine:
         if want_all:
             years = self.exporter.years(car.car_id)
             if not years:
-                raise EngineError(f"No trips recorded yet for {car.label}.")
+                raise EngineError(t("export.no_trips", label=car.label))
         elif not years:
             years = [now.year]
         return ExportRequest(car=car, years=sorted(set(years)))
@@ -611,21 +572,19 @@ class Engine:
         # a message meant as a comment ("20772 private") ended up in the
         # logbook as a journey.
         if parsed.end_odo == state.last_odometer:
-            where = (
-                f" at {state.last_address}" if state.last_address
+            same_place = bool(
+                state.last_address
                 and self.book(car).address_for(parsed.destination)
-                == self.book(car).address_for(state.last_address) else ""
+                == self.book(car).address_for(state.last_address)
             )
-            return Reply(
-                f"[{car.label}] Already logged: odometer {parsed.end_odo}{where}. "
-                f"Nothing added — the odometer has not moved since."
-            )
+            if same_place:
+                return Reply(t("trip.already_at", label=car.label, odo=parsed.end_odo,
+                               place=state.last_address))
+            return Reply(t("trip.already", label=car.label, odo=parsed.end_odo))
 
         if parsed.end_odo < state.last_odometer:
-            raise EngineError(
-                f"[{car.label}] odometer {parsed.end_odo} is lower than last "
-                f"recorded {state.last_odometer}."
-            )
+            raise EngineError(t("trip.lower", label=car.label, odo=parsed.end_odo,
+                                last=state.last_odometer))
 
         # Unknown, non-private destination without an address: ask for it.
         if (
@@ -640,12 +599,7 @@ class Engine:
                 "raw": parsed.raw,
             }
             store.save(state)
-            return Reply(
-                f"I don't have an address for '{parsed.destination}'.\n"
-                "Please reply with the full address, the name of a known "
-                "location, or share the location (WhatsApp attach \u2192 "
-                "Location). Send 'cancel' to drop this trip."
-            )
+            return Reply(t("trip.ask_address", destination=parsed.destination))
 
         return self._commit_trip(
             car, store, state, now,
@@ -667,10 +621,7 @@ class Engine:
         state = store.seed_if_empty(car.seed_address, car.seed_odometer)
 
         if not state.pending:
-            return Reply(
-                "Thanks, but I wasn't waiting for a location. Send "
-                "<odometer> <destination> first."
-            )
+            return Reply(t("loc.not_waiting"))
 
         resolved = address or reverse_geocode(
             latitude, longitude, self.settings.google_maps_api_key
@@ -695,15 +646,12 @@ class Engine:
         pending = state.pending or {}
         destination = pending.get("destination", "")
         if not answer:
-            return Reply("Please reply with the address, or share the location.")
+            return Reply(t("addr.reply"))
 
         if answer.lower() in _CANCEL_WORDS:
             state.pending = None
             store.save(state)
-            return Reply(
-                f"Cancelled: the trip to '{destination}' (odometer "
-                f"{pending.get('end_odo')}) was not logged."
-            )
+            return Reply(t("trip.cancelled", destination=destination, odo=pending.get("end_odo")))
 
         try:
             as_trip = parse_message(answer)
@@ -714,9 +662,7 @@ class Engine:
             store.save(state)
             inner = self.handle_text(answer, sender, now, car=car)
             return Reply(
-                f"Dropped the pending trip to '{destination}' (odometer "
-                f"{pending.get('end_odo')}): no address was given, so it was "
-                "not logged.\n" + inner,
+                t("trip.dropped", destination=destination, odo=pending.get("end_odo")) + inner,
                 logged=getattr(inner, "logged", False),
                 notice=True,
             )
@@ -724,11 +670,7 @@ class Engine:
         if self.book(car).is_known(answer):
             address = self.book(car).address_for(answer)
         elif not _HAS_LETTER_RE.search(answer):
-            return Reply(
-                "That doesn't look like an address. Reply with a street address "
-                "(e.g. 'Waldorpstraat 3, Den Haag') or the name of a known "
-                "location, share the location, or send 'cancel'."
-            )
+            return Reply(t("addr.invalid"))
         else:
             address = answer
         return self._save_location_and_commit(car, store, state, now, address)
@@ -827,19 +769,20 @@ class Engine:
         )
         store.save(state)
 
-        lines: List[str] = [
-            f"[{car.label}] {origin_name} -> {destination} "
-            f"({trip_km} km, {trip_type.value}).",
-            f"Odometer {end_odo}.",
+        parts: list = [
+            ("trip.summary", {"label": car.label, "origin": origin_name, "destination": destination,
+                              "km": trip_km, "purpose": Key(f"purpose.{trip_type.value}")}),
+            ("trip.odometer", {"odo": end_odo}),
         ]
         if learned:
-            lines.append(f"Saved address for '{destination}': {learned}")
+            parts.append(("trip.saved_address", {"destination": destination, "address": learned}))
         if route_str:
-            lines.append(f"Route recorded (deviation): {route_str}")
+            parts.append(("trip.route", {"route": route_str}))
         if cap and cap.message:
-            lines.append(cap.message)
+            parts.append(cap.message)
         return Reply(
-            "\n".join(lines),
+            render_parts(parts),
+            parts=parts,
             logged=True,
             notice=bool(
                 learned or route_str

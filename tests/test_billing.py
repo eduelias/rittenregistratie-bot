@@ -1,4 +1,7 @@
 """Subscriptions: signup -> first payment -> subscription -> car, and after."""
+
+# These tests check the Dutch customer texts (the default language).
+BOT_LANGUAGE = "nl"
 import importlib
 import json
 from datetime import date, timedelta
@@ -407,7 +410,24 @@ def test_pages_are_counted_and_admin_gets_stats(app, monkeypatch):
 
     monkeypatch.setattr(main.whatsapp, "send_message", fake_send)
     client.post("/webhook", json=_wa("stats 30", ADMIN))
-    assert sent and sent[0][0] == ADMIN and "laatste 30 dagen" in sent[0][1]
+    assert sent and sent[0][0] == ADMIN and "last 30 days" in sent[0][1]
     sent.clear()
     client.post("/webhook", json=_wa("stats", "31699999999"))   # not an admin
-    assert not any("paginaweergaven" in b for _, b in sent)
+    assert not any("page views" in b for _, b in sent)
+
+
+async def test_admin_alert_in_the_admin_language_customer_text_in_theirs(setup):
+    billing, mollie, engine, sent = setup
+    engine.languages.set(ADMIN, "en")
+    await billing.start(dict(FORM))
+    signup = billing.store.all()[0]
+    mollie.payments[signup.first_payment_id]["status"] = "paid"
+    await billing.sync_payment(signup.first_payment_id)
+    assert sent[-1][0] == ADMIN and sent[-1][1].startswith("New subscriber: Anna de Vries")
+    assert "monthly" in sent[-1][1]
+    reply = await billing.handle("31612345678", "abonnement")
+    assert reply.startswith("Je abonnement is actief: maandelijks, € 4,95 per maand.")
+    engine.languages.set("31612345678", "en")
+    reply = await billing.handle("31612345678", "subscription")
+    assert reply.startswith("Your subscription is active: monthly, € 4.95 per month.")
+    assert "Reply with the number of your choice:" in reply

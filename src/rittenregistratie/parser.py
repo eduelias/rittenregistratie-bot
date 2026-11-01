@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import re
 
+from .i18n import t
+
 from .models import ParsedMessage
 
 _PRIVATE_RE = re.compile(r"(?<!\w)#?(?:private|priv[eé])(?!\w)", re.IGNORECASE)
@@ -41,7 +43,7 @@ def parse_message(text: str) -> ParsedMessage:
     raw = text
     text = (text or "").strip()
     if not text:
-        raise ParseError("Empty message. Send: <odometer> <destination> [private]")
+        raise ParseError(t("parse.empty"))
 
     # Split off an optional free-text note.
     parts = _NOTE_SPLIT_RE.split(text, maxsplit=1)
@@ -50,7 +52,7 @@ def parse_message(text: str) -> ParsedMessage:
 
     tokens = body.split()
     if not tokens:
-        raise ParseError("Missing odometer reading.")
+        raise ParseError(t("parse.no_odo"))
 
     odo_token = tokens[0]
     if not odo_token.isdigit():
@@ -70,7 +72,7 @@ def parse_message(text: str) -> ParsedMessage:
         # A bare "private" trip with no named destination is allowed.
         destination = "private" if is_private else ""
     if not destination:
-        raise ParseError("Missing destination. Send: <odometer> <destination>.")
+        raise ParseError(t("parse.no_dest"))
 
     return ParsedMessage(
         end_odo=end_odo,

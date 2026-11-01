@@ -137,6 +137,24 @@ Not covered by this run, but by unit tests: Mollie calling the webhook
 (not possible with a local URL; it gets exercised for real on rrbot.nl),
 recurring payment failures, and removal after `access_until`.
 
+## Languages (i18n.py)
+
+Every bot message exists in Dutch and English. Each number chooses its own
+language in the bot (`english`, `nederlands`, `taal en`, `language nl`; `taal`
+shows the current one); the choice is kept in `data/languages.json`. Numbers
+that never chose get `RIT_DEFAULT_LANGUAGE` (Dutch).
+
+- Messages to several people are rendered per recipient: a trip the car logged
+  goes to every driver of the car in their own language, and admin alerts
+  ("New subscriber", "cancelled", failed charges) go to each admin in theirs.
+- The trip-logged WhatsApp template is tried in the driver's language first,
+  then in `RIT_WHATSAPP_TRIP_TEMPLATE_LANGUAGE`. Meta only has `trip_logged`
+  in English today; add a Dutch (`nl`) translation in WhatsApp Manager so Dutch
+  drivers get it in Dutch.
+- Not translated on purpose: ledger contents (notes, addresses, raw messages
+  are records), the website and Mollie payment descriptions (Dutch), and the
+  owner statistics (`stats`, the Monday report), which are always English.
+
 ## Statistics (analytics.py)
 
 First-party only; no cookies, no third party, no consent banner needed (the

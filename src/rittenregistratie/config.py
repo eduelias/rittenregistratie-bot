@@ -92,6 +92,9 @@ class Settings(BaseSettings):
     trial_days: int = 14
     price_monthly: str = "4.95"
     price_yearly: str = "49.00"
+    # Language for numbers that did not choose one ('taal'/'language'): nl | en.
+    default_language: str = "nl"
+
     # Days a former subscriber's trips are kept after access ends (retention.py;
     # the privacy statement promises this number).
     retention_days: int = 90
@@ -165,6 +168,11 @@ class Settings(BaseSettings):
     def signups_file(self) -> Path:
         """Subscriptions taken through the website (billing.py)."""
         return self.data_dir / "signups.json"
+
+    @property
+    def languages_file(self) -> Path:
+        """Per-number language choice (i18n.py)."""
+        return self.data_dir / "languages.json"
 
     @property
     def analytics_file(self) -> Path:

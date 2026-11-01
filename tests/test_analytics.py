@@ -87,13 +87,13 @@ def test_report_text(settings):
     SignupStore(settings.signups_file).save(
         _signup("1", TODAY, ACTIVE, trial_until=(TODAY + timedelta(days=13)).isoformat()))
     text = report(settings, days=7, today=TODAY)
-    assert "10 paginaweergaven" in text and "google.com 10" in text
-    assert "1 formulieren → 1 naar betalen → 1 machtiging betaald (10% van homepage)" in text
-    assert "MRR: € 0,00 betalend, € 4,95 incl. proef" in text
+    assert "10 page views" in text and "google.com 10" in text
+    assert "1 forms -> 1 to payment -> 1 mandates paid (10% of homepage views)" in text
+    assert "MRR: €0.00 paying, €4.95 incl. trials" in text
 
 
 def test_cli_report(settings, monkeypatch, capsys):
     import rittenregistratie.config as config
     monkeypatch.setattr(config, "get_settings", lambda: settings)
     assert analytics.main(["report", "--days", "30"]) == 0
-    assert "laatste 30 dagen" in capsys.readouterr().out
+    assert "last 30 days" in capsys.readouterr().out
