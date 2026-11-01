@@ -1,0 +1,14 @@
+[Unit]
+Description=rittenregistratie: delete former subscribers' trip data after the retention period
+
+[Service]
+Type=oneshot
+User=esaleh
+Group=esaleh
+WorkingDirectory=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot
+EnvironmentFile=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/.env
+ExecStart=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/.venv/bin/python -m rittenregistratie.retention --apply
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/data

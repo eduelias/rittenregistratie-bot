@@ -92,6 +92,12 @@ class Settings(BaseSettings):
     trial_days: int = 14
     price_monthly: str = "4.95"
     price_yearly: str = "49.00"
+    # Days a former subscriber's trips are kept after access ends (retention.py;
+    # the privacy statement promises this number).
+    retention_days: int = 90
+    # Signups per client IP per hour, and in total per hour (site.py).
+    signup_limit_per_ip: int = 5
+    signup_limit_total: int = 60
     # The first payment only sets up the mandate for the subscription.
     mandate_amount: str = "0.01"
     # Shown in the website footer and legal pages.
