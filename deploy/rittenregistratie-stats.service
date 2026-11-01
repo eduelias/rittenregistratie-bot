@@ -1,0 +1,10 @@
+[Unit]
+Description=rittenregistratie: weekly site and subscription statistics to the owner
+
+[Service]
+Type=oneshot
+User=esaleh
+Group=esaleh
+WorkingDirectory=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot
+EnvironmentFile=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/.env
+ExecStart=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/deploy/weekly-stats.sh

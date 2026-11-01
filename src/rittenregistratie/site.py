@@ -15,7 +15,7 @@ from collections import deque
 from pathlib import Path
 from string import Template
 from typing import Deque, Dict, Optional
-from urllib.parse import parse_qsl, quote
+from urllib.parse import parse_qsl, quote, urlsplit
 
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from .billing import (
     ACTIVE, ATTENTION, CANCELED, ENDED, FAILED, PAUSED, PENDING, Billing, MollieError, SignupError,
 )
+from .analytics import PageCounter
 from .config import Settings
 
 log = logging.getLogger("rittenregistratie.site")
@@ -110,6 +111,15 @@ def build_router(settings: Settings, billing: Optional[Billing]) -> APIRouter:
         return v
 
     base = settings.public_base_url.rstrip("/")
+    counter = PageCounter(settings.analytics_file, urlsplit(base).hostname or "")
+
+    def count(request: Request, path: str) -> None:
+        """Cookieless daily totals only; see analytics.py. Never breaks a page."""
+        try:
+            counter.view(path, user_agent=request.headers.get("user-agent", ""),
+                         referer=request.headers.get("referer", ""), query=request.url.query)
+        except Exception:  # pragma: no cover - statistics are best effort
+            log.exception("page count failed")
 
     def head_meta(title: str, path: str) -> str:
         """Icons, theme colour and the tags link previews (WhatsApp, LinkedIn,
@@ -171,7 +181,8 @@ def build_router(settings: Settings, billing: Optional[Billing]) -> APIRouter:
         )
 
     @router.get("/", response_class=HTMLResponse)
-    async def landing() -> HTMLResponse:
+    async def landing(request: Request) -> HTMLResponse:
+        count(request, "/")
         if billing is None:
             block = ('<p class="notice">Aanmelden kan binnenkort. Laat je e-mailadres achter via '
                      f'<a href="mailto:{html.escape(settings.support_email)}">'
@@ -198,15 +209,18 @@ def build_router(settings: Settings, billing: Optional[Billing]) -> APIRouter:
         return FileResponse(SITE_DIR / "favicon.ico", media_type="image/x-icon")
 
     @router.get("/voorwaarden", response_class=HTMLResponse)
-    async def terms() -> HTMLResponse:
+    async def terms(request: Request) -> HTMLResponse:
+        count(request, "/voorwaarden")
         return page("Voorwaarden", _read("voorwaarden.html"), robots="index", path="/voorwaarden")
 
     @router.get("/privacy", response_class=HTMLResponse)
-    async def privacy() -> HTMLResponse:
+    async def privacy(request: Request) -> HTMLResponse:
+        count(request, "/privacy")
         return page("Privacy", _read("privacy.html"), robots="index", path="/privacy")
 
     @router.get("/herroeping", response_class=HTMLResponse)
-    async def withdrawal() -> HTMLResponse:
+    async def withdrawal(request: Request) -> HTMLResponse:
+        count(request, "/herroeping")
         return page("Herroeping", _read("herroeping.html"), path="/herroeping")
 
     if billing is None:
@@ -223,6 +237,10 @@ def build_router(settings: Settings, billing: Optional[Billing]) -> APIRouter:
                         'aanmeldingen geprobeerd. Probeer het over een uur opnieuw, of mail ons.</p>',
                         status=429)
         form = await _form(request)
+        try:
+            counter.form()
+        except Exception:  # pragma: no cover
+            log.exception("form count failed")
         try:
             checkout = await billing.start(form)
         except SignupError as exc:
