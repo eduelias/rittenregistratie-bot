@@ -206,6 +206,35 @@ async def send_template(
     )
 
 
+async def send_auth_code(
+    token: str, phone_number_id: str, to: str, name: str, code: str,
+    language: str = "en", graph_url: str = GRAPH_URL,
+) -> bool:
+    """Send a one-time code with an AUTHENTICATION template (copy-code button).
+
+    Such a template is delivered whatever the 24-hour window; Meta fixes its
+    wording ("<code> is your verification code") in each language.
+    """
+    return await _post_message(
+        token, phone_number_id,
+        {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "template",
+            "template": {
+                "name": name,
+                "language": {"code": language},
+                "components": [
+                    {"type": "body", "parameters": [{"type": "text", "text": code}]},
+                    {"type": "button", "sub_type": "url", "index": "0",
+                     "parameters": [{"type": "text", "text": code}]},
+                ],
+            },
+        },
+        graph_url, f"auth template {name}",
+    )
+
+
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 

@@ -81,11 +81,25 @@ def apply(settings: Settings, purges: List[Purge]) -> None:
                 mapping = {}
             if mapping.pop(normalize_phone(p.phone), None) is not None:
                 active.write_text(json.dumps(mapping, indent=2, sort_keys=True), encoding="utf-8")
+        for path in (settings.languages_file, settings.last_inbound_file):
+            _forget(path, p.phone)
         signup = store.get(p.signup_id)
         if signup is not None:
             signup.data_deleted_at = datetime.now().isoformat(timespec="seconds")
             signup.note(f"retention: trip data of {p.car_id} deleted ({len(p.files)} files)")
             store.save(signup)
+
+
+def _forget(path: Path, phone: str) -> None:
+    """Drop one number from a {phone: value} JSON file."""
+    if not path.exists():
+        return
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) or {}
+    except ValueError:
+        return
+    if data.pop(normalize_phone(phone), None) is not None:
+        path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
 
 
 def main(argv: Optional[List[str]] = None) -> int:

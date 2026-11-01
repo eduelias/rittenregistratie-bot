@@ -219,8 +219,9 @@ Legal and business:
       applies 21% VAT, so "inclusief btw" stands.
 - [x] Terms (`site/voorwaarden.html`), privacy statement
       (`site/privacy.html`) and the model withdrawal form
-      (`site/herroeping.html`) published, version 1 of 2026-11-01. Not
-      reviewed by a lawyer.
+      (`site/herroeping.html`) published; terms and privacy statement are at
+      version 2 of 2026-11-01 (cancel button, language choice, last-message
+      time, backups, processors with links). Not reviewed by a lawyer.
 - [x] Trip data of a former subscriber is deleted `RIT_RETENTION_DAYS` (90)
       after access ended, as the privacy statement promises:
       `python -m rittenregistratie.retention [--apply]`, daily via
@@ -237,13 +238,18 @@ Legal and business:
       `RIT_COMPANY_LINE` with KvK and VAT number (2026-11-01). It shows in the
       footer of every page and at the top of the terms, privacy statement and
       withdrawal form.
-- [ ] Processor agreements / sub-processors: Meta (WhatsApp), Mollie, Google
-      (reverse geocoding). Add to the privacy statement and the processing
-      register.
-- [ ] Consumer law: the 14-day withdrawal right coincides with the trial
-      (stated in the terms). Since 2023, Dutch law requires cancelling to be
-      as easy as signing up. `opzeggen` on WhatsApp plus email probably
-      covers it; a cancel button on the site is safer.
+- [x] Processors named in the privacy statement (v2), each with a link to its
+      own policy: Meta/WhatsApp, Mollie, Google (reverse geocoding),
+      Cloudflare (DNS, mail forwarding).
+- [ ] Processing register (verwerkingsregister) and the processors' DPAs on
+      file: owner's paperwork, not code.
+- [x] Cancel button (opzegknop, Dutch law since 2023): "Abonnement opzeggen"
+      in the footer of every page, `/opzeggen`. The visitor enters the
+      number, gets a 6-digit code through the `cancel_code` authentication
+      template (10 minutes, 5 tries, 3 codes per number per hour, the same
+      answer for non-customers), and cancels with it. The confirmation goes
+      out on WhatsApp: the bot's reply inside the 24-hour window, else the
+      `subscription_cancelled` template. `opzeggen` on WhatsApp still works.
 - [ ] Invoices: Mollie does not send VAT invoices for subscriptions. Business
       customers will ask for one (Mollie Invoicing, Moneybird or similar).
 
@@ -261,11 +267,9 @@ Mollie:
       directdebit` for recurring. Checked with a test-mode signup: iDEAL
       first payment → valid `directdebit` mandate → €49 / 12 months
       subscription.
-- [ ] **rrbot.nl** was added to the profile's websites, status **In review**
-      (with pauta.cc and rit.du7.dev, both approved; rit.du7.dev is unused
-      and can go). Mollie's reviewer will open rrbot.nl, which does not
-      resolve yet: apply the DNS and deploy the site soon, or the review
-      may fail.
+- [ ] **rrbot.nl** is on the profile's websites, status **In review**; the
+      "Website offline" request was answered with "Website online" after the
+      site went live (2026-11-01). rit.du7.dev is unused and can go.
 - [ ] The profile's product description has a typo ("Belastingdiesnt").
 - [ ] Mollie's fee on each signup: the €0.01 mandate payment costs €0.32 via
       iDEAL. That's fine at this price, but it is why the mandate amount stays
@@ -280,15 +284,28 @@ Mollie:
 Operations:
 - [ ] `RIT_MAX_USERS` is 5, including the owner's car, so 4 subscribers. Raise
       it when ready.
-- [ ] Admin notifications are WhatsApp texts. They only arrive within 24 hours
-      of the admin's last message to the bot (error 131047). Either message
-      the bot daily or add a utility template for admin alerts.
+- [x] Admin alerts reach the admin whatever the 24-hour window: the bot
+      records each number's last inbound message (`data/last-inbound.json`,
+      window.py) and sends the `owner_alert` utility template (en/nl, one
+      line) when the window is closed. Until Meta approves `owner_alert`, a
+      refused template falls back to plain text.
 - [x] `POST /aanmelden` is rate-limited in the app: 5 per client IP and 60
       in total per hour (`RIT_SIGNUP_LIMIT_PER_IP`, `RIT_SIGNUP_LIMIT_TOTAL`).
-- [ ] Back up `data/` (ledgers, `signups.json`, per-car learned places) off
-      the Pi.
-- [ ] The bot's own replies are still in English; only the welcome/help and
-      subscription messages are Dutch.
+- [x] Daily backup of `data/` and `config/` (not `.env`):
+      `python -m rittenregistratie.backup create`, 03:15 via
+      `deploy/rittenregistratie-backup.{service,timer}`, into
+      `~/backups/rittenregistratie` and a copy on the NAS disk
+      `/media/nas/backups/rittenregistratie`, 30 days. Every archive is
+      verified (checksums, ledgers, JSON) after writing; restore with
+      `python -m rittenregistratie.backup restore <archive> --to <dir>`.
+      The NAS disk is in the same house: an off-site copy is the owner's call.
+- [x] The bot speaks Dutch or English per number (`english` / `nederlands`),
+      default Dutch (#50); the trip template exists in both (#51).
 - [ ] The number is the Meta-provided +1 555; a Dutch number would look more
       trustworthy to customers.
 - [ ] Watch the WhatsApp messaging limit tier as customers grow.
+- [x] Webhook on `https://rrbot.nl/webhook` (verified with live traffic);
+      `cloudflared-quick.service` stopped and disabled (2026-11-01).
+- [x] Campaign links are counted: `utm_source` and `utm_campaign` per day
+      (analytics.py), shown in `stats`. Use e.g.
+      `https://rrbot.nl/?utm_source=linkedin&utm_campaign=launch`.

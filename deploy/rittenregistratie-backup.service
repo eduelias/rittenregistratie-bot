@@ -1,0 +1,10 @@
+[Unit]
+Description=rittenregistratie: back up data/ and config/ (local + NAS disk, 30 days)
+
+[Service]
+Type=oneshot
+User=esaleh
+Group=esaleh
+WorkingDirectory=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot
+EnvironmentFile=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/.env
+ExecStart=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/.venv/bin/python -m rittenregistratie.backup create --dir /home/esaleh/backups/rittenregistratie --keep-days 30 --copy-to /media/nas/backups/rittenregistratie
