@@ -194,10 +194,10 @@ Legal and business:
 - [x] Caddy logs to journald too (`logging: driver: journald` in
       du7/dns-stack, 2026-11-01), so the 30 days cover it. Read with
       `journalctl CONTAINER_NAME=caddy`.
-- [ ] **Business address.** Dutch distance-selling law (art. 6:230m BW)
-      requires a geographic address on the site. Only KvK and VAT number are
-      shown now; add the address (or a business address service) to
-      `RIT_COMPANY_LINE`.
+- [x] Business address (art. 6:230m BW): Buitenhof 128, 1354 GT Almere, in
+      `RIT_COMPANY_LINE` with KvK and VAT number (2026-11-01). It shows in the
+      footer of every page and at the top of the terms, privacy statement and
+      withdrawal form.
 - [ ] Processor agreements / sub-processors: Meta (WhatsApp), Mollie, Google
       (reverse geocoding). Add to the privacy statement and the processing
       register.
