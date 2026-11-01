@@ -130,6 +130,15 @@ Mollie:
 - [ ] Complete Mollie onboarding: KvK extract, bank account, UBO, ID, website
       review of rrbot.nl. Mollie checks that terms, privacy, prices and
       contact details are on the site.
+- [ ] Mollie state on 2026-11-01: company details, stakeholders, business
+      activity and bank type are done; "Open a Mollie Business Account" is
+      open, and payouts are not yet available. No payment method is
+      activated yet (Setup guide › Set up payment methods). Activate **iDEAL**,
+      **Cards** and **SEPA Direct Debit** manually, not the "recommended"
+      bundle.
+- [ ] Mollie's fee on each signup: the €0.01 mandate payment costs €0.32 via
+      iDEAL. That's fine at this price, but it is why the mandate amount stays
+      at the minimum.
 - [ ] Enable **iDEAL** on the profile. In the test run, checkout offered
       only credit card, even though the site promises "iDEAL of creditcard".
       Also enable SEPA Direct Debit, which is how the recurring charges after
