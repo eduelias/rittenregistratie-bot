@@ -27,6 +27,10 @@ class FakeMollie:
 
     def __init__(self):
         self.payments, self.subs, self.calls = {}, {}, []
+        self.mandates = [{"id": "mdt_1", "status": "valid", "method": "directdebit",
+                          "details": {"consumerName": "A de Vries",
+                                      "consumerAccount": "NL55INGB0001231234"}}]
+        self.fail_subscriptions = False
         self._n = 0
 
     def _id(self, prefix):
@@ -51,9 +55,12 @@ class FakeMollie:
         return self.payments[pid]
 
     async def create_subscription(self, customer_id, body):
+        if self.fail_subscriptions:
+            raise MollieError("refused", 422)
         sid = self._id("sub")
         self.subs[sid] = {"id": sid, "status": "active", "startDate": body["startDate"],
-                          "nextPaymentDate": body["startDate"]}
+                          "nextPaymentDate": body["startDate"], "amount": body["amount"],
+                          "interval": body["interval"], "mandateId": body.get("mandateId")}
         self.calls.append(("subscription", body))
         return self.subs[sid]
 
@@ -64,6 +71,9 @@ class FakeMollie:
         self.subs[sid]["status"] = "canceled"
         self.calls.append(("cancel", sid))
         return self.subs[sid]
+
+    async def list_mandates(self, customer_id):
+        return list(self.mandates)
 
 
 def _settings(tmp_path, **kw):

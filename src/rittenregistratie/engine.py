@@ -61,7 +61,9 @@ _USER_HELP = (
     "  45260 Thuis privé\n"
     "Onbekende bestemming? Ik vraag één keer om het adres.\n"
     "'excel' stuurt je rittenoverzicht van dit jaar, 'excel 2025' een ander jaar.\n"
-    "'abonnement' toont je abonnement, 'opzeggen' zegt het op."
+    "'abonnement' toont je abonnement met een genummerd menu (antwoord met 1, 2, ...).\n"
+    "Direct kan ook: 'pauzeren', 'hervatten', 'opzeggen', 'opnieuw', "
+    "'maandelijks' of 'jaarlijks' (overstappen)."
 )
 # Commands that request a spreadsheet: "excel", "excel 2025", "excel all",
 # and for admins "excel <car_id> [year|all]".

@@ -40,6 +40,55 @@ customer ──GET /aanmelden/klaar?id=…────────────�
 - **Signups** are kept in `data/signups.json`: name, email, phone, car, Mollie
   ids, and a short event trail. Mollie remains the record for money.
 
+## Subscriber commands over WhatsApp
+
+`abonnement` (also `abo`) shows the status: plan and price, trial end, next
+charge, and the payment method from the Mollie mandate (IBAN or card, last 4
+digits only). It ends with a numbered menu, and replying `1`..`n` within 30
+minutes picks an option. The menu is kept in memory, so after a restart the
+customer asks for it again. A bare number with no menu open is treated as a
+normal message. Each option also has a word that works without the menu:
+
+| State | Menu | Words |
+|---|---|---|
+| active / trial | switch plan, pause, cancel | `maandelijks`, `jaarlijks`, `pauzeren`, `opzeggen` |
+| paused | resume (same or other plan), cancel for good | `hervatten`, `maandelijks`/`jaarlijks`, `opzeggen` |
+| cancelled, still running | restart (same or other plan) | `opnieuw`, `maandelijks`/`jaarlijks` |
+| ended (car removed) | restart (same or other plan) | `opnieuw`, `maandelijks`/`jaarlijks` |
+
+Mollie has no pause or plan change, so both are done as a cancel plus a new
+subscription on the same mandate:
+
+- **Switch plan:** the current subscription is cancelled and the new plan
+  starts on the old next charge date. The current period runs out unchanged.
+  This is refused on the charge day itself, as is pause.
+- **Pause:** the Mollie subscription is cancelled; the mandate and the car
+  are kept. **Trips are accepted until the paid period ends**
+  (`paid_until`, the day before the next charge). After that the bot refuses
+  new trips, but `excel`, `help` and these commands still work. The car
+  stays in `cars.yaml` and still counts towards `RIT_MAX_USERS`.
+- **Resume / restart:** a new subscription on a valid (or pending) mandate.
+  It starts the day after the paid period, or today when that period is
+  over. There is no second trial. An ended number gets its car back under
+  the **same car id**, so the ledger continues. New signups never get a car
+  id that an earlier signup or a ledger file already holds.
+- **No usable mandate:** the customer gets a €0.01 first-payment link on
+  their existing Mollie customer. Once it is paid (webhook or return page),
+  the same restart runs, and the customer and the admins get a WhatsApp.
+- A restart is refused before any money moves when the number now belongs
+  to another car, or when the car id is taken. For an ended number it is
+  also refused when the bot is full.
+- Every change is reported to the admins (`_tell_admins`).
+
+Verified on 2026-11-01 against the Mollie test API, using a throwaway
+customer and an API-created SEPA mandate. The sequence was menu → switch to
+yearly → pause → resume monthly → cancel → `opnieuw`. Each step left exactly
+one active subscription on the same mandate, starting on the original first
+charge date, and the old ones were cancelled. Mollie drops `nextPaymentDate`
+from a cancelled subscription, so the code reads it before cancelling. The
+renew payment link (no valid mandate) is covered by unit tests only, because
+it needs a checkout in the browser.
+
 ## Keeping the owner's setup private
 
 Before this change, `approve` wrote cars with no `event_plugins`. Those cars
