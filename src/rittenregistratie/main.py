@@ -271,7 +271,7 @@ async def webhook(request: Request) -> Response:
         if _billing is not None:
             # With paid signup, the website is the way in; no join requests.
             await _send_all(sender, (
-                "Hoi! Dit is RRBot, je rittenregistratie via WhatsApp. Dit nummer is nog "
+                "Hoi! Dit is RittenRegistratie-bot, je rittenregistratie via WhatsApp. Dit nummer is nog "
                 f"niet aangemeld. Probeer het 14 dagen gratis: {_settings.signup_url}"
             ), extra_notify)
             return Response(status_code=200, content="ok")

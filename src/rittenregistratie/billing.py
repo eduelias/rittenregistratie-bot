@@ -335,7 +335,7 @@ class Billing:
             "amount": amount(self.settings.mandate_amount),
             "customerId": signup.customer_id,
             "sequenceType": "first",
-            "description": f"RRBot machtiging ({_PLAN_NL[signup.plan]} abonnement)",
+            "description": f"RittenRegistratie-bot machtiging ({_PLAN_NL[signup.plan]} abonnement)",
             "redirectUrl": self.return_url(signup),
             "locale": "nl_NL",
             "metadata": {"signup_id": signup.id},
@@ -401,7 +401,7 @@ class Billing:
             "amount": amount(self.price(plan)),
             "interval": _INTERVAL[plan],
             "startDate": start.isoformat(),
-            "description": f"RRBot {_PLAN_NL[plan]} ({signup.car_label}, {signup.id[:6]})",
+            "description": f"RittenRegistratie-bot {_PLAN_NL[plan]} ({signup.car_label}, {signup.id[:6]})",
             "metadata": {"signup_id": signup.id},
         }
         if mandate_id:
@@ -796,7 +796,7 @@ class Billing:
             "amount": amount(self.settings.mandate_amount),
             "customerId": signup.customer_id,
             "sequenceType": "first",
-            "description": f"RRBot machtiging ({_PLAN_NL[plan]} abonnement, hervatten)",
+            "description": f"RittenRegistratie-bot machtiging ({_PLAN_NL[plan]} abonnement, hervatten)",
             "redirectUrl": self.return_url(signup),
             "locale": "nl_NL",
             "metadata": {"signup_id": signup.id, "renew": True},

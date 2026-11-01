@@ -21,7 +21,11 @@ h3 { margin: 0 0 6px; font-size: 1.1rem; }
 .logo span { color: var(--green); }
 nav a { margin-left: 18px; text-decoration: none; color: var(--ink); font-size: .95rem; }
 nav a.btn { color: #fff; }
-@media (max-width: 640px) { nav a:not(.btn) { display: none; } }
+.logo, .btn { white-space: nowrap; }
+@media (max-width: 640px) {
+  nav a:not(.btn) { display: none; }
+  .logo { font-size: 1.1rem; }
+}
 
 .btn { display: inline-block; background: var(--green); color: #fff; text-decoration: none; border: 0;
        font: inherit; font-weight: 600; padding: 12px 22px; border-radius: 999px; cursor: pointer; }
