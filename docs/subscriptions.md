@@ -75,6 +75,19 @@ doing if the private plugins grow; not needed for this.
    from the new number (or call `Billing.cancel`) and check that the
    subscription is cancelled in the dashboard.
 
+### Result, 2026-11-01 (local, real Mollie test mode)
+
+| Case | Outcome |
+|---|---|
+| Signup, card test payment **Paid** | "Welkom" page; car `golf` in cars.yaml with `event_plugins: []`, `cap_plugin: warn`, `subscription:`; Mollie: valid card mandate, subscription €4.95 / 1 month starting today + 14 days |
+| Subscriber messages | `start` gave the Dutch help; `45230 home` asked for an address (the owner's "home" was not used); the reply was learned into the car's own file; `privé` was recognised; `abonnement` read the live subscription |
+| Signup (yearly), **Failed** | "niet gelukt" page; no car, no Mollie subscription; that number messaging the bot got the signup link |
+| `opzeggen` | Mollie subscription `canceled`; access until the day before the first charge; admin notified; a second `opzeggen` is harmless |
+
+Not covered by this run, but by unit tests: Mollie calling the webhook
+(not possible with a local URL; it gets exercised for real on rrbot.nl),
+recurring payment failures, and removal after `access_until`.
+
 ## Deploy (owner's OK needed for each step)
 
 1. `du7/dns-zone`: `op-env run -- tofu apply` (adds the rrbot.nl zone).
@@ -117,8 +130,14 @@ Mollie:
 - [ ] Complete Mollie onboarding: KvK extract, bank account, UBO, ID, website
       review of rrbot.nl. Mollie checks that terms, privacy, prices and
       contact details are on the site.
-- [ ] Enable iDEAL + credit card for **live**, SEPA Direct Debit for the
-      recurring charges.
+- [ ] Enable **iDEAL** on the profile. In the test run, checkout offered
+      only credit card, even though the site promises "iDEAL of creditcard".
+      Also enable SEPA Direct Debit, which is how the recurring charges after
+      an iDEAL first payment are collected.
+- [ ] Create a separate Mollie **payment profile for rrbot.nl**. The current
+      profile is "Du7 Technology Services / du7.dev", and Mollie reviews the
+      profile's website before live payments. Live keys are tied to a
+      profile.
 - [ ] Replace the test key with the **live** key in 1Password, re-render the
       `.env`, restart.
 
