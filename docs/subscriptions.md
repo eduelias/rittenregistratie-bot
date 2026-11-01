@@ -88,6 +88,21 @@ Not covered by this run, but by unit tests: Mollie calling the webhook
 (not possible with a local URL; it gets exercised for real on rrbot.nl),
 recurring payment failures, and removal after `access_until`.
 
+## Live state (2026-11-01)
+
+- rrbot.nl: Cloudflare zone active (nameservers chuck/jessica.ns.cloudflare.com
+  at Squarespace; DNSSEC turned off for the move), DNS-only CNAME to
+  du7.sytes.net, Let's Encrypt certificates for rrbot.nl and www (redirects to
+  the apex). support@rrbot.nl forwards to du7@msn.com.
+- du7: main deployed with Mollie in **test mode**. `.env` backup
+  `.env.bak-*-rrbot`; Caddyfile backup `Caddyfile.bak-*` (committed in
+  du7/dns-stack).
+- Meta webhook: `https://rrbot.nl/webhook` (was the Tailscale Funnel
+  `https://du7.tail02fdb2.ts.net/ritten/webhook`; to roll back, POST that URL to
+  `/{app-id}/subscriptions` again). `cloudflared-quick` was not in Meta's path.
+- Rotate `RIT_WHATSAPP_VERIFY_TOKEN` (1Password, `.env`, Meta subscription):
+  it was echoed in a deploy log.
+
 ## Deploy (owner's OK needed for each step)
 
 1. `du7/dns-zone`: `op-env run -- tofu apply` (adds the rrbot.nl zone).
