@@ -132,10 +132,16 @@ Mollie:
       contact details are on the site.
 - [ ] Mollie state on 2026-11-01: company details, stakeholders, business
       activity and bank type are done; "Open a Mollie Business Account" is
-      open, and payouts are not yet available. No payment method is
-      activated yet (Setup guide › Set up payment methods). Activate **iDEAL**,
-      **Cards** and **SEPA Direct Debit** manually, not the "recommended"
-      bundle.
+      open, and payouts are not yet available.
+- [ ] Payment methods (profile `pfl_D9ZeJ6TNr5` › Online payments), checked
+      2026-11-01: **iDEAL activated**; **Cards** and **SEPA Direct Debit** not
+      yet. Until one of them is active, `GET /v2/methods?sequenceType=first`
+      returns no methods at all, and a signup ends on the site's "Er ging
+      iets mis" page. An iDEAL first payment needs SEPA Direct Debit for the
+      mandate; a card mandates itself.
+- [ ] The profile's other websites are pauta.cc and rit.du7.dev (both
+      approved). **rrbot.nl is not listed**: add it, or replace rit.du7.dev,
+      which is no longer used.
 - [ ] Mollie's fee on each signup: the €0.01 mandate payment costs €0.32 via
       iDEAL. That's fine at this price, but it is why the mandate amount stays
       at the minimum.
