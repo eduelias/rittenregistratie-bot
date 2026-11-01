@@ -149,8 +149,10 @@ recurring payment failures, and removal after `access_until`.
 - Meta webhook: `https://rrbot.nl/webhook` (was the Tailscale Funnel
   `https://du7.tail02fdb2.ts.net/ritten/webhook`; to roll back, POST that URL to
   `/{app-id}/subscriptions` again). `cloudflared-quick` was not in Meta's path.
-- Rotate `RIT_WHATSAPP_VERIFY_TOKEN` (1Password, `.env`, Meta subscription):
-  it was echoed in a deploy log.
+- `RIT_WHATSAPP_VERIFY_TOKEN` rotated on 2026-11-01 (it had been echoed in a
+  deploy log): new value in 1Password and du7's `.env`, Meta re-verified.
+- du7's `.env` cannot be `source`d (`RIT_COMPANY_LINE` has spaces); systemd
+  reads it fine, scripts should `grep` single values.
 
 ## Deploy (owner's OK needed for each step)
 
@@ -185,9 +187,14 @@ Legal and business:
       `python -m rittenregistratie.retention [--apply]`, daily via
       `deploy/rittenregistratie-retention.{service,timer}`. The signup record
       (billing data) stays.
-- [ ] The privacy statement promises server logs for at most 30 days. The
-      bot logs through journald on du7, whose retention is system-wide; set
-      `MaxRetentionSec=30day` there, or start uvicorn with `--no-access-log`.
+- [x] Server logs at most 30 days, as the privacy statement promises: du7's
+      journald has `MaxRetentionSec=30day` in
+      `/etc/systemd/journald.conf.d/30-retention.conf` (2026-11-01, older
+      journals vacuumed). The bot logs only to journald.
+- [ ] Caddy's container log (Docker `json-file`, du7/dns-stack) has no time
+      limit and holds remote IPs from TLS handshakes and ACME. Switch the
+      `caddy` service to `logging: driver: journald` so the 30 days apply;
+      this recreates the container (a few seconds without any public site).
 - [ ] **Business address.** Dutch distance-selling law (art. 6:230m BW)
       requires a geographic address on the site. Only KvK and VAT number are
       shown now; add the address (or a business address service) to
