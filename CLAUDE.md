@@ -65,6 +65,9 @@ No ruff config here (unlike the private-plugins sibling) — CI runs pytest only
   ledger/state/plugin selection.
 - `onboarding.py` — join requests + admin commands (`pending`, `approve`,
   `assign`, `unassign`, `deny`, `list`, `remove`).
+- `billing.py` + `site.py` (+ `site/*.html`) — rrbot.nl landing page and paid
+  signup through Mollie: first payment → subscription → car with
+  `subscription:` in cars.yaml. See `docs/subscriptions.md`.
 
 ## Config / secrets (`config.py`, prefix `RIT_`, `.env` not committed)
 
@@ -94,5 +97,8 @@ with `openpyxl`.
   bot logs nothing.
 - A reply that looks like an odometer reading is never stored as a learned
   address.
+- A car with `subscription:` (a paying customer) never loads plugins outside
+  `RIT_SUBSCRIBER_EVENT_PLUGINS`, always uses `RIT_SUBSCRIBER_CAP_PLUGIN`, and
+  has its own learned-places file. Keep the private plugins away from them.
 - WhatsApp Business setup issues (display-name/verification) are separate
   from app bugs — see the sibling `STATUS-whatsapp-debug.md` for a past case.

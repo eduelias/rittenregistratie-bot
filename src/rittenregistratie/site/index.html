@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RRBot: rittenregistratie via WhatsApp</title>
+<meta name="description" content="Houd je rittenregistratie bij via WhatsApp. Stuur je kilometerstand en bestemming, ontvang een Excel met alle velden die de Belastingdienst vraagt. 14 dagen gratis.">
+<link rel="stylesheet" href="/static/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap bar">
+    <a class="logo" href="/">RR<span>Bot</span></a>
+    <nav><a href="#hoe">Hoe het werkt</a><a href="#prijs">Prijs</a><a href="#vragen">Vragen</a><a class="btn small" href="#aanmelden">Probeer gratis</a></nav>
+  </div>
+</header>
+
+<main>
+<section class="hero">
+  <div class="wrap two">
+    <div>
+      <h1>Je rittenregistratie, gewoon via WhatsApp.</h1>
+      <p class="lead">Stuur na elke rit je kilometerstand en bestemming. RRBot houdt je
+      rittenadministratie bij en stuurt je op verzoek een Excel met precies de velden die de
+      Belastingdienst per rit vraagt.</p>
+      <p><a class="btn" href="#aanmelden">Probeer 14 dagen gratis</a></p>
+      <p class="fine">Geen app, geen kastje in je auto. Daarna € $price_monthly_nl per maand, maandelijks opzegbaar.</p>
+    </div>
+    <div class="phone" aria-label="Voorbeeld van een gesprek met RRBot">
+      <div class="chat">
+        <p class="me">45230 Kantoor</p>
+        <p class="bot">Ik heb nog geen adres voor 'Kantoor'. Stuur het adres, of deel je locatie.</p>
+        <p class="me">Stationsplein 1, Utrecht</p>
+        <p class="bot">Thuis → Kantoor (38 km, zakelijk). Kilometerstand 45230.</p>
+        <p class="me">45268 Thuis privé</p>
+        <p class="bot">👍</p>
+        <p class="me">excel</p>
+        <p class="bot doc">📄 ritten-2026.xlsx</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="hoe" class="wrap">
+  <h2>Hoe het werkt</h2>
+  <ol class="steps">
+    <li><strong>Aanmelden</strong><span>Vul hieronder je gegevens en kilometerstand in en geef via iDEAL een machtiging (€ $mandate_nl). Je nummer staat direct aan.</span></li>
+    <li><strong>Appen na elke rit</strong><span>Kilometerstand en bestemming, bijvoorbeeld <code>45230 Kantoor</code>. Privé? Zet er <code>privé</code> achter. Een nieuw adres vraagt de bot één keer.</span></li>
+    <li><strong>Excel wanneer je wilt</strong><span>Stuur <code>excel</code> en je krijgt het overzicht van dit jaar als bestand in WhatsApp. Een ander jaar: <code>excel 2025</code>.</span></li>
+  </ol>
+</section>
+
+<section class="wrap">
+  <h2>Wat je krijgt</h2>
+  <div class="grid">
+    <div class="card"><h3>Alle verplichte velden</h3><p>Per rit: datum, begin- en eindstand, vertrek- en aankomstadres, privé of zakelijk, en de route als die afwijkt van je gebruikelijke.</p></div>
+    <div class="card"><h3>Niets wordt achteraf veranderd</h3><p>Elke rit wordt één keer vastgelegd zoals jij hem stuurt. Correcties komen er als nieuwe regel bij; de Excel wordt steeds opnieuw uit die vastlegging gemaakt.</p></div>
+    <div class="card"><h3>Privé-kilometers in beeld</h3><p>De bot telt je privé-kilometers per jaar en waarschuwt als je richting de 500 km gaat.</p></div>
+    <div class="card"><h3>Adressen leert hij één keer</h3><p>"Kantoor", "Thuis", "Klant X": één keer het adres, daarna herkent de bot de naam.</p></div>
+  </div>
+  <p class="fine">RRBot legt vast wat jij doorgeeft. Het is geen belastingadvies en geeft geen garantie dat de
+  Belastingdienst je administratie accepteert; jij blijft verantwoordelijk voor de juistheid ervan.</p>
+</section>
+
+<section id="prijs" class="wrap">
+  <h2>Prijs</h2>
+  <div class="plans">
+    <div class="plan"><h3>Maandelijks</h3><p class="price">€ $price_monthly_nl<small> /maand</small></p><ul><li>14 dagen gratis</li><li>Maandelijks opzegbaar</li><li>1 auto, 1 WhatsApp-nummer</li></ul></div>
+    <div class="plan best"><h3>Jaarlijks</h3><p class="price">€ $price_yearly_nl<small> /jaar</small></p><ul><li>14 dagen gratis</li><li>Twee maanden voordeliger</li><li>1 auto, 1 WhatsApp-nummer</li></ul></div>
+  </div>
+  <p class="fine">Prijzen inclusief btw. De eerste betaling van € $mandate_nl is alleen de machtiging; je eerste
+  echte betaling is na de proefperiode. Zeg je binnen 14 dagen op, dan betaal je niets meer.</p>
+</section>
+
+<section id="aanmelden" class="wrap signup">
+  <h2>Aanmelden</h2>
+  $signup_block
+</section>
+
+<section id="vragen" class="wrap faq">
+  <h2>Vragen</h2>
+  <details><summary>Waarom betaal ik eerst € $mandate_nl?</summary><p>Met die betaling geef je via iDEAL of creditcard een machtiging, zodat het abonnement na de proefperiode automatisch kan worden afgeschreven. Je bank toont het als een betaling aan Du7 Technology Services via Mollie.</p></details>
+  <details><summary>Hoe zeg ik op?</summary><p>Stuur <code>opzeggen</code> naar de bot in WhatsApp, of mail ons. Er wordt daarna niets meer afgeschreven en de bot werkt tot het eind van je betaalde periode (of proefperiode). Stuur daarvoor <code>excel all</code> om al je ritten te bewaren.</p></details>
+  <details><summary>Heb ik een app of kastje nodig?</summary><p>Nee. Alleen WhatsApp op het nummer waarmee je je aanmeldt.</p></details>
+  <details><summary>Wat gebeurt er met mijn gegevens?</summary><p>Je ritten staan op onze eigen server in Nederland en worden alleen gebruikt om jouw rittenregistratie te maken. Berichten lopen via WhatsApp (Meta), betalingen via Mollie. Zie de <a href="/privacy">privacyverklaring</a>.</p></details>
+  <details><summary>Ik heb meer auto's of meerdere bestuurders.</summary><p>Dat kan de bot, maar het zit nog niet in de online aanmelding. Mail ons, dan regelen we het.</p></details>
+</section>
+</main>
+
+<footer class="wrap foot">
+  <p>RRBot is een dienst van Du7 Technology Services · $company_line</p>
+  <p><a href="/voorwaarden">Voorwaarden</a> · <a href="/privacy">Privacy</a> · <a href="/herroeping">Herroeping</a> · <a href="mailto:$support_email">$support_email</a></p>
+</footer>
+</body>
+</html>

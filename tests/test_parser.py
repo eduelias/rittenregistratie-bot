@@ -66,3 +66,13 @@ def test_marker_and_private_together():
 
 def test_an_asterisk_inside_a_word_is_left_alone():
     assert parse_message("20672 a*b").destination == "a*b"
+
+
+def test_dutch_prive_marks_a_private_trip():
+    for word in ("privé", "Prive", "#privé"):
+        parsed = parse_message(f"45260 Thuis {word}")
+        assert parsed.is_private and parsed.destination == "Thuis"
+
+
+def test_prive_inside_a_word_is_a_place():
+    assert not parse_message("45260 Privékliniek").is_private

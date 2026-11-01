@@ -1,0 +1,15 @@
+<form method="post" action="/aanmelden" class="form">
+    <label>Naam<input name="name" required autocomplete="name"></label>
+    <label>E-mailadres<input name="email" type="email" required autocomplete="email"></label>
+    <label>WhatsApp-nummer<input name="phone" type="tel" required placeholder="06 12345678" autocomplete="tel"></label>
+    <label>Naam van je auto<input name="car_label" required placeholder="bijv. Golf of 12-ABC-3"></label>
+    <label>Huidige kilometerstand<input name="seed_odometer" inputmode="numeric" pattern="[0-9 .]*" required placeholder="45192"></label>
+    <label>Adres waar je eerste rit begint<input name="seed_address" required placeholder="Dorpsstraat 1, Utrecht" autocomplete="street-address"></label>
+    <fieldset><legend>Abonnement</legend>
+      <label class="radio"><input type="radio" name="plan" value="monthly" checked> Maandelijks, € $price_monthly_nl</label>
+      <label class="radio"><input type="radio" name="plan" value="yearly"> Jaarlijks, € $price_yearly_nl</label>
+    </fieldset>
+    <label class="check"><input type="checkbox" name="terms" required> Ik ga akkoord met de <a href="/voorwaarden" target="_blank">voorwaarden</a> en de <a href="/privacy" target="_blank">privacyverklaring</a>.</label>
+    <button class="btn" type="submit">Verder naar machtiging (€ $mandate_nl)</button>
+    <p class="fine">Je gaat naar Mollie om met iDEAL of creditcard te betalen. Na $trial_days dagen start je abonnement.</p>
+  </form>

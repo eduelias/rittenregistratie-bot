@@ -11,9 +11,11 @@ also the only point where plugins may transform data, via the event bus.
 """
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from .cars import ActiveCarStore, Car, CarRegistry
@@ -34,6 +36,8 @@ from .routes import RouteBook
 from .state import State, StateStore
 from .whatsapp import reverse_geocode
 
+log = logging.getLogger("rittenregistratie.engine")
+
 
 class EngineError(ValueError):
     pass
@@ -46,6 +50,19 @@ class UnknownCarError(EngineError):
 # Replies (case-insensitive) that drop a trip waiting for an address.
 _CANCEL_WORDS = frozenset({"cancel", "/cancel", "skip", "stop", "annuleer"})
 _HAS_LETTER_RE = re.compile(r"[^\W\d_]")
+# A registered driver's first message is usually a greeting (the website's
+# WhatsApp link pre-fills "start"); answer it with how the bot works instead
+# of failing to parse it as a trip.
+_HELP_WORDS = ("start", "help", "hulp", "hallo", "hoi", "hi", "hello")
+_USER_HELP = (
+    "Welkom bij RittenRegistratie ({label}).\n"
+    "Stuur na elke rit je kilometerstand en bestemming:\n"
+    "  45230 Kantoor\n"
+    "  45260 Thuis privé\n"
+    "Onbekende bestemming? Ik vraag één keer om het adres.\n"
+    "'excel' stuurt je rittenoverzicht van dit jaar, 'excel 2025' een ander jaar.\n"
+    "'abonnement' toont je abonnement, 'opzeggen' zegt het op."
+)
 # Commands that request a spreadsheet: "excel", "excel 2025", "excel all",
 # and for admins "excel <car_id> [year|all]".
 _EXPORT_WORDS = frozenset({"excel", "export", "xlsx", "sheet", "spreadsheet"})
@@ -93,6 +110,8 @@ class Engine:
         # RIT_EVENT_PLUGINS) subscribe to that car's bus. Built lazily.
         self._buses: Dict[str, EventBus] = {}
         self.loaded_event_plugins: Dict[str, List[str]] = {}
+        # Location books of subscriber cars, by car id (see book()).
+        self._books: Dict[str, RouteBook] = {}
         self.exporter = ExportService(settings, self.bus_for)
 
     def bus_for(self, car_id: str) -> EventBus:
@@ -104,10 +123,25 @@ class Engine:
                 car.event_plugins if car is not None and car.event_plugins is not None
                 else self.settings.event_plugin_selection()
             )
+            if car is not None and car.is_subscriber:
+                selection = self._subscriber_plugins(car, selection)
             bus = EventBus()
             self.loaded_event_plugins[car_id] = load_event_plugins(bus, selection)
             self._buses[car_id] = bus
         return bus
+
+    def _subscriber_plugins(self, car: Car, selection) -> List[str]:
+        """A subscriber's event plugins: what the car asks for, but only names
+        RIT_SUBSCRIBER_EVENT_PLUGINS allows. Never "all installed" and never
+        the global default, so the operator's own plugins stay with the
+        operator however cars.yaml or .env are edited."""
+        allowed = set(self.settings.subscriber_event_plugin_list())
+        wanted = selection if selection is not None else []
+        refused = [n for n in wanted if n not in allowed]
+        if refused:
+            log.warning("Car %s is a subscriber; not loading event plugins %s.",
+                        car.car_id, ", ".join(refused))
+        return [n for n in wanted if n in allowed]
 
     def _load_routebook(self) -> RouteBook:
         """Seed locations from config, then learned locations from data/."""
@@ -116,6 +150,35 @@ class Engine:
             load_yaml(self.settings.routes_file),
             load_yaml(self.settings.learned_locations_file),
         )
+
+    def book(self, car: Optional[Car]) -> RouteBook:
+        """The places a car's messages resolve against.
+
+        The operator's cars share the committed seed config and
+        ``data/locations-learned.yaml``. A subscriber's car has a book of its
+        own, holding only what that subscriber taught it: someone else's
+        "home" must never end up as their address, nor theirs in anyone's.
+        """
+        if car is None or not car.is_subscriber:
+            return self.routebook
+        book = self._books.get(car.car_id)
+        if book is None:
+            book = RouteBook({}, {}, load_yaml(self._learned_file(car)))
+            self._books[car.car_id] = book
+        return book
+
+    def _learned_file(self, car: Optional[Car]) -> Path:
+        if car is not None and car.is_subscriber:
+            return self.settings.car_learned_locations_file(car.car_id)
+        return self.settings.learned_locations_file
+
+    def _learn(self, car: Car, name: str, address: str, **extra) -> None:
+        """Store a learned place in the car's own book and reload it."""
+        save_location(self._learned_file(car), name, address, **extra)
+        if car.is_subscriber:
+            self._books.pop(car.car_id, None)
+        else:
+            self.routebook = self._load_routebook()
 
     @staticmethod
     def _instantiate_trajectory(traj_cls, api_key: str):
@@ -186,11 +249,13 @@ class Engine:
         if not parts:
             return None
         cmd = parts[0].lower().lstrip("/")
-        if cmd not in ("cars", "car", "name"):
+        if cmd not in ("cars", "car", "name") + _HELP_WORDS:
             return None
         own = self.cars.cars_for(sender)
         if not own:
             raise UnknownCarError(f"Number {sender} is not registered to any car.")
+        if cmd in _HELP_WORDS:
+            return Reply(_USER_HELP.format(label=own[0].label))
         if cmd == "name":
             return self._name_last_unnamed(sender, " ".join(parts[1:]).strip())
         if cmd == "car" and len(parts) > 1:
@@ -219,33 +284,30 @@ class Engine:
         if not state.last_unnamed:
             return Reply("Nothing to name: the last automatic trip ended at a known place.")
         info = state.last_unnamed
-        save_location(
-            self.settings.learned_locations_file, place, info["address"],
-            lat=info.get("lat"), lon=info.get("lon"),
-        )
-        self.routebook = self._load_routebook()
+        self._learn(car, place, info["address"], lat=info.get("lat"), lon=info.get("lon"))
         state.last_unnamed = None
         store.save(state)
         return Reply(f"Saved '{place}': {info['address']}. Future trips ending there will use it.")
 
     # --- vehicle telemetry ------------------------------------------------
-    def _place_for(self, report: VehicleTripReport) -> tuple[Optional[str], str, bool]:
+    def _place_for(self, car: Car, report: VehicleTripReport) -> tuple[Optional[str], str, bool]:
         """Where a reported trip ended: ``(known_name, address, is_private)``.
 
         Order: a known place name from the source, a known geofence/zone name,
         the nearest known location within radius of the coordinates, then
         reverse geocoding (or the bare coordinates) with ``known_name`` None.
         """
+        book = self.book(car)
         for hint in (report.place, report.zone):
-            if hint and self.routebook.is_known(hint):
-                return hint, self.routebook.address_for(hint), self.routebook.is_private_place(hint)
+            if hint and book.is_known(hint):
+                return hint, book.address_for(hint), book.is_private_place(hint)
         if report.latitude is not None and report.longitude is not None:
-            hit = self.routebook.nearest(
+            hit = book.nearest(
                 report.latitude, report.longitude, float(self.settings.place_radius_m)
             )
             if hit is not None:
                 name, address, _dist = hit
-                return name, address, self.routebook.is_private_place(name)
+                return name, address, book.is_private_place(name)
             address = reverse_geocode(
                 report.latitude, report.longitude, self.settings.google_maps_api_key
             ) or f"{report.latitude:.5f},{report.longitude:.5f}"
@@ -263,7 +325,7 @@ class Engine:
         if report.end_odo <= state.last_odometer:
             return None  # already logged (manually or by an earlier event), or 0 km
 
-        name, address, is_private = self._place_for(report)
+        name, address, is_private = self._place_for(car, report)
         note_bits = [f"auto-logged from {report.source or 'vehicle'}"]
         if report.start_odo is not None and report.start_odo != state.last_odometer:
             gap = report.start_odo - state.last_odometer
@@ -309,6 +371,7 @@ class Engine:
         )
         # Plugin selection lives in cars.yaml; rebuild buses on next use.
         self._buses.clear()
+        self._books.clear()
 
     def is_admin(self, sender: str) -> bool:
         from .cars import normalize_phone
@@ -324,12 +387,14 @@ class Engine:
 
     def _cap_for_car(self, car: Car):
         """The private-cap plugin for a car: ``cap_plugin`` from cars.yaml if
-        set; else the legacy per-number override; else the default."""
-        if car.cap_plugin:
-            inst = self._cap_instances.get(car.cap_plugin)
+        set; else the legacy per-number override; else the default. A
+        subscriber's car always gets RIT_SUBSCRIBER_CAP_PLUGIN."""
+        name = self.settings.subscriber_cap_plugin if car.is_subscriber else car.cap_plugin
+        if name:
+            inst = self._cap_instances.get(name)
             if inst is None:
-                inst = registry.get_private_cap_plugin(car.cap_plugin)()
-                self._cap_instances[car.cap_plugin] = inst
+                inst = registry.get_private_cap_plugin(name)()
+                self._cap_instances[name] = inst
             return inst
         if self._uses_override(car):
             return self.cap_plugin_override
@@ -546,8 +611,8 @@ class Engine:
         if parsed.end_odo == state.last_odometer:
             where = (
                 f" at {state.last_address}" if state.last_address
-                and self.routebook.address_for(parsed.destination)
-                == self.routebook.address_for(state.last_address) else ""
+                and self.book(car).address_for(parsed.destination)
+                == self.book(car).address_for(state.last_address) else ""
             )
             return Reply(
                 f"[{car.label}] Already logged: odometer {parsed.end_odo}{where}. "
@@ -563,7 +628,7 @@ class Engine:
         # Unknown, non-private destination without an address: ask for it.
         if (
             not parsed.is_private
-            and not self.routebook.is_known(parsed.destination)
+            and not self.book(car).is_known(parsed.destination)
         ):
             state.pending = {
                 "end_odo": parsed.end_odo,
@@ -654,8 +719,8 @@ class Engine:
                 notice=True,
             )
 
-        if self.routebook.is_known(answer):
-            address = self.routebook.address_for(answer)
+        if self.book(car).is_known(answer):
+            address = self.book(car).address_for(answer)
         elif not _HAS_LETTER_RE.search(answer):
             return Reply(
                 "That doesn't look like an address. Reply with a street address "
@@ -674,8 +739,7 @@ class Engine:
         destination = pending.get("destination", "")
         # Learn the location so it is not asked again. Learned entries live in
         # data/, separate from the committed seed config.
-        save_location(self.settings.learned_locations_file, destination, address)
-        self.routebook = self._load_routebook()
+        self._learn(car, destination, address)
         state.pending = None
         store.save(state)
         return self._commit_trip(
@@ -697,8 +761,9 @@ class Engine:
         start_odo = state.last_odometer
         trip_km = end_odo - start_odo
 
-        start_address = self.routebook.address_for(origin_name)
-        end_address = self.routebook.address_for(destination)
+        book = self.book(car)
+        start_address = book.address_for(origin_name)
+        end_address = book.address_for(destination)
 
         # The Belastingdienst wants the driven route recorded when it was not
         # the most usual one. The raw ledger has no field for a route, so
@@ -707,7 +772,7 @@ class Engine:
         # RIT_ROUTE_ON_DEVIATION to have it mentioned in the reply anyway.
         route_str = ""
         if self.settings.route_on_deviation:
-            route_info = self.routebook.lookup(origin_name, destination)
+            route_info = book.lookup(origin_name, destination)
             if route_info is not None and trip_km != route_info.nearest_variant(trip_km):
                 traj = self.trajectory.get_trajectory(start_address, end_address)
                 route_str = traj.summary or ""
