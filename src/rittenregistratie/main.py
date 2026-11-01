@@ -39,9 +39,15 @@ _billing = (
 )
 app.include_router(build_router(_settings, _billing))
 
-# Subscription commands a subscriber can send over WhatsApp.
-_SUBSCRIPTION_WORDS = {"abonnement": "status", "subscription": "status",
-                       "opzeggen": "cancel", "unsubscribe": "cancel"}
+
+async def _subscription_reply(sender: str, text: str) -> str | None:
+    """A subscription command (``abonnement``, ``opzeggen``, ``pauzeren``,
+    ``hervatten``, a menu number, ...; see billing.COMMANDS), else None."""
+    try:
+        return await _billing.handle(sender, text)
+    except MollieError:
+        log.exception("subscription command failed")
+        return "Dat lukte nu niet. Probeer het later nog eens, of mail ons."
 
 
 @app.get("/health")
@@ -252,6 +258,12 @@ async def webhook(request: Request) -> Response:
             log.exception("admin command failed")
             reply = "Admin command failed."
     elif not is_registered:
+        # A former subscriber (car removed when the subscription ended) may
+        # restart with the same ledger; anything else gets the ended notice.
+        if _billing is not None and _billing.returning(sender):
+            reply = await _subscription_reply(sender, text or "") or _billing.ended_text()
+            await _send_all(sender, reply, extra_notify)
+            return Response(status_code=200, content="ok")
         # Onboarding: record a join request and notify admins.
         if not _settings.onboarding_enabled:
             log.warning("Ignoring message from unregistered number %s", sender)
@@ -283,17 +295,9 @@ async def webhook(request: Request) -> Response:
         await _send_all(sender, reply, extra_notify)
         return Response(status_code=200, content="ok")
     else:
-        word = (text or "").strip().lower()
-        if _billing is not None and word in _SUBSCRIPTION_WORDS:
-            try:
-                if _SUBSCRIPTION_WORDS[word] == "cancel":
-                    reply = await _billing.cancel(sender)
-                else:
-                    reply = await _billing.status_text(sender)
-            except MollieError:
-                log.exception("subscription command failed")
-                reply = "Dat lukte nu niet. Probeer het later nog eens, of mail ons."
-            await _send_all(sender, reply, extra_notify)
+        sub_reply = await _subscription_reply(sender, text or "") if _billing is not None else None
+        if sub_reply is not None:
+            await _send_all(sender, sub_reply, extra_notify)
             return Response(status_code=200, content="ok")
         # Car selection for people who report for several cars.
         try:
@@ -316,6 +320,12 @@ async def webhook(request: Request) -> Response:
                 status_code=200, content="ok",
                 background=BackgroundTask(_run_export, sender, export_req),
             )
+        # Paused past the paid period: exports and commands above still work,
+        # new trips are refused until the subscriber resumes.
+        paused = _billing.paused(sender) if _billing is not None else None
+        if paused:
+            await _send_all(sender, paused, extra_notify)
+            return Response(status_code=200, content="ok")
         try:
             if text and text.strip().lower() in ("ping", "/ping"):
                 # Simple connectivity check: no trip logged, no state touched.

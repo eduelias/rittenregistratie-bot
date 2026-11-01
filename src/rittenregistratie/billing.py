@@ -13,9 +13,35 @@ Flow
 3. Once the first payment is paid: a subscription starts after the trial,
    the number gets a car in ``cars.yaml`` (``subscription: <signup id>``, no
    event plugins, the subscriber cap plugin) and the admins are told.
-4. ``opzeggen`` over WhatsApp cancels the subscription; the number keeps
-   working until the paid period (or the trial) ends, then is removed on its
-   next message. The ledger stays on disk.
+4. Over WhatsApp the subscriber manages it all (:meth:`Billing.handle`):
+   ``abonnement`` shows the status and a numbered menu; ``opzeggen``,
+   ``pauzeren``, ``hervatten``/``opnieuw``, ``maandelijks``/``jaarlijks`` act
+   directly. See "Subscriber lifecycle" below.
+
+Subscriber lifecycle
+--------------------
+Mollie has no pause and no plan change, so both are a cancel plus a new
+subscription on the customer's existing mandate:
+
+- *Cancel* (ACTIVE -> CANCELED): the number keeps working until the day
+  before the next charge (or the trial end), then is removed on its next
+  message (-> ENDED). The ledger stays on disk.
+- *Pause* (ACTIVE -> PAUSED): the subscription is cancelled, the mandate and
+  the car are kept. Trips are accepted until the already-paid period ends
+  (``paid_until``); after that new trips are refused, but ``excel``,
+  ``help`` and the subscription commands keep working. The car stays in
+  ``cars.yaml`` (and counts towards RIT_MAX_USERS) so the ledger simply
+  continues on resume.
+- *Switch plan* (ACTIVE): cancel and recreate with the other interval and
+  price, starting on the old next charge date; the current period runs out.
+- *Resume / restart* (PAUSED, CANCELED, ENDED -> ACTIVE): a new subscription
+  on a valid mandate, starting the day after the paid period (or today when
+  that is over). ENDED numbers get their car back under the same car id, so
+  the ledger continues. Without a usable mandate the customer gets a new
+  first-payment link on the same customer; once paid, the same restart runs.
+  There is no second trial.
+
+Every change is reported to the admins.
 
 A failed recurring payment is reported to the admins, who decide; the
 number is not cut off automatically.
@@ -30,10 +56,11 @@ import json
 import logging
 import re
 import secrets
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Awaitable, Callable, Dict, List, Optional
+from typing import Awaitable, Callable, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -51,6 +78,7 @@ PENDING = "pending"          # form sent, first payment not (yet) paid
 ACTIVE = "active"            # paid, subscription created, car provisioned
 FAILED = "failed"            # first payment failed / expired / canceled
 CANCELED = "canceled"        # customer cancelled; works until access_until
+PAUSED = "paused"            # subscription stopped, mandate + car kept; see paid_until
 ENDED = "ended"              # access_until passed, number removed
 ATTENTION = "attention"      # paid but could not be provisioned; admin acts
 
@@ -85,9 +113,24 @@ class Signup:
     car_id: str = ""
     access_until: str = ""      # ISO date, set when cancelled
     events: List[str] = field(default_factory=list)  # short audit trail
+    mandate_id: str = ""        # the mandate the subscription charges
+    trial_until: str = ""       # ISO date, last day of the free trial
+    paid_until: str = ""        # ISO date, PAUSED: last day already paid for
+    old_subscription_ids: List[str] = field(default_factory=list)
+    # A first payment to renew the mandate before a resume/restart.
+    renew_payment_id: str = ""
+    renew_plan: str = ""
+    renew_start: str = ""       # ISO date the new subscription should start
 
     def note(self, text: str) -> None:
         self.events.append(f"{datetime.now().isoformat(timespec='seconds')} {text}")
+
+    def noted(self, text: str) -> bool:
+        return any(e.endswith(f" {text}") for e in self.events)
+
+    @property
+    def renew_failed(self) -> bool:
+        return any(self.noted(f"renew {self.renew_payment_id} {s}") for s in _PAYMENT_DEAD)
 
 
 class SignupStore:
@@ -118,15 +161,17 @@ class SignupStore:
 
     def find(self, *, payment_id: str = "", subscription_id: str = "") -> Optional[Signup]:
         for s in self.all():
-            if payment_id and s.first_payment_id == payment_id:
+            if payment_id and payment_id in (s.first_payment_id, s.renew_payment_id):
                 return s
-            if subscription_id and s.subscription_id == subscription_id:
+            if subscription_id and (s.subscription_id == subscription_id
+                                    or subscription_id in s.old_subscription_ids):
                 return s
         return None
 
     def for_phone(self, phone: str) -> List[Signup]:
+        """This number's signups, oldest first."""
         phone = normalize_phone(phone)
-        return [s for s in self.all() if s.phone == phone]
+        return sorted((s for s in self.all() if s.phone == phone), key=lambda s: s.created_at)
 
 
 class Mollie:
@@ -176,6 +221,10 @@ class Mollie:
     async def cancel_subscription(self, customer_id: str, subscription_id: str) -> dict:
         return await self._call("DELETE", f"/customers/{customer_id}/subscriptions/{subscription_id}")
 
+    async def list_mandates(self, customer_id: str) -> List[dict]:
+        data = await self._call("GET", f"/customers/{customer_id}/mandates")
+        return (data.get("_embedded") or {}).get("mandates") or []
+
 
 def amount(value: str) -> dict:
     return {"currency": "EUR", "value": f"{float(value):.2f}"}
@@ -214,6 +263,9 @@ class Billing:
         self.notify = notify
         self.store = SignupStore(settings.signups_file)
         self._lock = asyncio.Lock()
+        # phone -> (expiry on the monotonic clock, the menu's (action, plan)s).
+        # In memory: after a restart a number just asks for the menu again.
+        self._menus: Dict[str, Tuple[float, List[Tuple[str, Optional[str]]]]] = {}
 
     # --- urls ---------------------------------------------------------
     @property
@@ -316,6 +368,9 @@ class Billing:
             if signup is None:
                 log.warning("Mollie payment %s belongs to no signup.", payment_id)
                 return None
+            if payment_id == signup.renew_payment_id:
+                await self._renewal(signup, payment)
+                return signup
             status = payment.get("status")
             if signup.status == PENDING and status == "paid":
                 await self._activate(signup, payment)
@@ -332,25 +387,40 @@ class Billing:
             return None
         if signup.status == PENDING and signup.first_payment_id:
             return await self.sync_payment(signup.first_payment_id) or signup
+        if (signup.renew_payment_id and signup.status in (PAUSED, CANCELED, ENDED)
+                and not signup.renew_failed):
+            return await self.sync_payment(signup.renew_payment_id) or signup
         return signup
 
-    async def _activate(self, signup: Signup, payment: dict) -> None:
-        start = date.today() + timedelta(days=self.settings.trial_days)
+    async def _subscribe(self, signup: Signup, plan: str, start: date, mandate_id: str) -> dict:
+        """Create a Mollie subscription for ``plan`` from ``start`` and make it
+        the signup's current one (the previous id is kept for its webhooks).
+        Does not save."""
         body = {
-            "amount": amount(self.price(signup.plan)),
-            "interval": _INTERVAL[signup.plan],
+            "amount": amount(self.price(plan)),
+            "interval": _INTERVAL[plan],
             "startDate": start.isoformat(),
-            "description": f"RRBot {_PLAN_NL[signup.plan]} ({signup.car_label}, {signup.id[:6]})",
+            "description": f"RRBot {_PLAN_NL[plan]} ({signup.car_label}, {signup.id[:6]})",
             "metadata": {"signup_id": signup.id},
         }
-        if payment.get("mandateId"):
-            body["mandateId"] = payment["mandateId"]
+        if mandate_id:
+            body["mandateId"] = mandate_id
+            signup.mandate_id = mandate_id
         hook = self._webhook_url()
         if hook:
             body["webhookUrl"] = hook
         sub = await self.mollie.create_subscription(signup.customer_id, body)
+        if signup.subscription_id and signup.subscription_id != sub["id"]:
+            signup.old_subscription_ids.append(signup.subscription_id)
         signup.subscription_id = sub["id"]
-        signup.note(f"subscription {sub['id']} from {start.isoformat()}")
+        signup.plan = plan
+        signup.note(f"subscription {sub['id']} ({plan}) from {start.isoformat()}")
+        return sub
+
+    async def _activate(self, signup: Signup, payment: dict) -> None:
+        start = date.today() + timedelta(days=self.settings.trial_days)
+        sub = await self._subscribe(signup, signup.plan, start, payment.get("mandateId") or "")
+        signup.trial_until = (start - timedelta(days=1)).isoformat()
         # The subscription exists from here on; save before provisioning so a
         # failure below cannot lead to a second subscription on the retry.
         signup.status = ATTENTION
@@ -378,8 +448,7 @@ class Billing:
         here: the customer has paid; the website refuses new signups instead."""
         if self.engine.cars.is_registered(signup.phone):
             raise ValueError(f"{signup.phone} is already registered")
-        existing = [c.car_id for c in self.engine.cars.all()]
-        car_id = slugify_car_id(signup.car_label, existing)
+        car_id = slugify_car_id(signup.car_label, self._taken_car_ids())
         add_car_to_yaml(
             self.settings.cars_file, car_id, signup.car_label, signup.seed_address,
             signup.seed_odometer, signup.phone,
@@ -388,6 +457,17 @@ class Billing:
         )
         self.engine.reload_cars()
         return car_id
+
+    def _taken_car_ids(self) -> List[str]:
+        """Car ids a new subscriber may not get: cars in cars.yaml, ids held by
+        any signup (an ENDED subscriber gets theirs back on restart) and any id
+        with a ledger on disk. Reusing one would hand someone else's trips to
+        the new number."""
+        taken = {c.car_id for c in self.engine.cars.all()}
+        taken.update(s.car_id for s in self.store.all() if s.car_id)
+        taken.update(p.name[len("raw-ledger-"):-len(".jsonl")]
+                     for p in self.settings.data_dir.glob("raw-ledger-*.jsonl"))
+        return sorted(taken)
 
     async def _recurring(self, payment: dict) -> Optional[Signup]:
         signup = self.store.find(subscription_id=payment["subscriptionId"])
@@ -411,42 +491,368 @@ class Billing:
 
     # --- 3. subscriber commands over WhatsApp -------------------------
     def _current(self, phone: str) -> Optional[Signup]:
-        live = [s for s in self.store.for_phone(phone) if s.status in (ACTIVE, CANCELED)]
-        return live[-1] if live else None
+        """The signup this number's commands act on: its latest live one,
+        else its latest ended one (so a former subscriber can restart)."""
+        mine = self.store.for_phone(phone)
+        live = [s for s in mine if s.status in (ACTIVE, PAUSED, CANCELED, ATTENTION)]
+        ended = [s for s in mine if s.status == ENDED]
+        return (live or ended or [None])[-1]
 
-    async def status_text(self, phone: str) -> str:
+    def returning(self, phone: str) -> bool:
+        """True for a number whose subscription ended (its car was removed):
+        it may still use the subscription commands to come back."""
         signup = self._current(phone)
-        if signup is None:
-            return "Ik vind geen abonnement bij dit nummer."
-        plan = f"{_PLAN_NL[signup.plan]}, € {self.price(signup.plan).replace('.', ',')}"
-        if signup.status == CANCELED:
-            return f"Abonnement ({plan}) is opgezegd; de bot werkt tot en met {signup.access_until}."
-        sub = await self.mollie.get_subscription(signup.customer_id, signup.subscription_id)
-        nxt = sub.get("nextPaymentDate") or "onbekend"
-        return f"Abonnement actief ({plan}). Volgende betaling: {nxt}. Opzeggen: stuur 'opzeggen'."
+        return signup is not None and signup.status == ENDED
 
-    async def cancel(self, phone: str, today: Optional[date] = None) -> str:
+    async def handle(self, phone: str, text: str, today: Optional[date] = None) -> Optional[str]:
+        """The reply to a subscription command or a menu pick; None when
+        ``text`` is neither (the caller handles it as a trip or command)."""
         today = today or date.today()
+        word = (text or "").strip().lower().lstrip("/")
+        menu = self._menus.get(normalize_phone(phone))
+        if word.isdigit() and menu is not None and menu[0] > time.monotonic():
+            actions = menu[1]
+            if not 1 <= int(word) <= len(actions):
+                return f"Kies een nummer van 1 tot en met {len(actions)}, of stuur 'abonnement'."
+            self._menus.pop(normalize_phone(phone), None)
+            action, plan = actions[int(word) - 1]
+        elif word in COMMANDS:
+            action, plan = COMMANDS[word], None
+            if action in PLANS:
+                action, plan = "plan", action
+        else:
+            return None
         signup = self._current(phone)
         if signup is None:
-            return "Ik vind geen abonnement bij dit nummer."
-        if signup.status == CANCELED:
-            return f"Je abonnement was al opgezegd; de bot werkt tot en met {signup.access_until}."
+            return self._no_subscription()
+        if action == "menu":
+            return await self._menu(signup, today)
+        async with self._lock:
+            signup = self._current(phone)  # may have changed while we waited
+            return await self._act(signup, action, plan, today)
+
+    async def _act(self, signup: Signup, action: str, plan: Optional[str], today: date) -> str:
+        state = signup.status
+        if state == ATTENTION:
+            return self._attention()
+        if state == ACTIVE:
+            if action == "cancel":
+                return await self._cancel_active(signup, today)
+            if action == "pause":
+                return await self._pause(signup, today)
+            if action == "plan" and plan and plan != signup.plan:
+                return await self._switch(signup, plan, today)
+            if action == "plan":
+                return f"Je hebt al een {_PLAN_NL[signup.plan]} abonnement. Stuur 'abonnement' voor het menu."
+            return "Je abonnement loopt al. Stuur 'abonnement' voor het menu."
+        if action in ("resume", "plan"):
+            return await self._continue(signup, plan or signup.plan, today)
+        if state == PAUSED and action == "cancel":
+            return await self._cancel_paused(signup, today)
+        if state == PAUSED:
+            return "Je abonnement is al gepauzeerd. Stuur 'hervatten' om verder te gaan."
+        if state == CANCELED:
+            return (f"Je abonnement is al opgezegd; de bot werkt tot en met "
+                    f"{_nl_date(signup.access_until)}. Stuur 'opnieuw' om toch door te gaan.")
+        return "Je abonnement is al afgelopen. Stuur 'opnieuw' om weer te beginnen."
+
+    # status + menu
+    async def _menu(self, signup: Signup, today: date) -> str:
+        if signup.status == ATTENTION:
+            return self._attention()
+        plan, other = signup.plan, _other(signup.plan)
+        lines: List[str] = []
+        if signup.status == ACTIVE:
+            sub = await self.mollie.get_subscription(signup.customer_id, signup.subscription_id)
+            lines.append(f"Je abonnement is actief: {_PLAN_NL[plan]}, {self._price_text(plan)}.")
+            if signup.trial_until and date.fromisoformat(signup.trial_until) >= today:
+                lines.append(f"Proefperiode tot en met {_nl_date(signup.trial_until)}.")
+            if sub.get("status") not in (None, "active"):
+                lines.append(f"Let op: Mollie meldt de status '{sub.get('status')}'. We nemen contact op.")
+            nxt = sub.get("nextPaymentDate")
+            if nxt:
+                lines.append(f"Volgende betaling: {_nl_date(nxt)}, {self._amount_text(plan)}.")
+            lines.append(f"Betaalwijze: {_mandate_text(await self._usable_mandate(signup))}.")
+            options = [("plan", other), ("pause", None), ("cancel", None)]
+        elif signup.status == PAUSED:
+            lines.append(f"Je abonnement is gepauzeerd ({_PLAN_NL[plan]}). Er wordt niets afgeschreven.")
+            if self._paid(signup.paid_until, today):
+                lines.append(f"Je kunt de bot gewoon gebruiken tot en met {_nl_date(signup.paid_until)}.")
+            else:
+                lines.append("Nieuwe ritten registreer ik pas weer na het hervatten; 'excel' werkt wel.")
+            lines.append(f"Betaalwijze: {_mandate_text(await self._usable_mandate(signup))}.")
+            options = [("resume", plan), ("resume", other), ("cancel", None)]
+        elif signup.status == CANCELED:
+            lines.append("Je abonnement is opgezegd; er wordt niets meer afgeschreven.")
+            if self._paid(signup.access_until, today):
+                lines.append(f"De bot werkt tot en met {_nl_date(signup.access_until)}.")
+            options = [("resume", plan), ("resume", other)]
+        else:  # ENDED
+            lines.append("Je abonnement is afgelopen. Je ritten zijn bewaard.")
+            options = [("resume", plan), ("resume", other)]
+        lines += ["", "Stuur het nummer van je keuze:"]
+        for i, (action, p) in enumerate(options, 1):
+            lines.append(f"{i}. {self._option_text(signup, action, p)}")
+        self._menus[signup.phone] = (time.monotonic() + MENU_TTL_S, options)
+        return "\n".join(lines)
+
+    def _option_text(self, signup: Signup, action: str, plan: Optional[str]) -> str:
+        if action == "plan":
+            return f"Overstappen naar {_PLAN_NL[plan]} ({self._price_text(plan)})"
+        if action == "pause":
+            return "Pauzeren"
+        if action == "cancel":
+            return "Definitief opzeggen" if signup.status == PAUSED else "Opzeggen"
+        verb = "Hervatten" if signup.status == PAUSED else "Opnieuw starten"
+        return f"{verb}, {_PLAN_NL[plan]} ({self._price_text(plan)})"
+
+    # cancel / pause / switch (ACTIVE)
+    async def _next_charge(self, signup: Signup, today: date) -> date:
+        """The date the current subscription charges next (or starts, in the
+        trial). Mollie omits it once nothing more will be charged."""
         sub = await self.mollie.get_subscription(signup.customer_id, signup.subscription_id)
-        # Paid up to the day before the next charge (or the end of the trial).
         nxt = sub.get("nextPaymentDate") or sub.get("startDate")
-        until = (date.fromisoformat(nxt) - timedelta(days=1)) if nxt else today
+        return date.fromisoformat(nxt) if nxt else today
+
+    async def _cancel_active(self, signup: Signup, today: date) -> str:
+        nxt = await self._next_charge(signup, today)
         await self.mollie.cancel_subscription(signup.customer_id, signup.subscription_id)
         signup.status = CANCELED
-        signup.access_until = max(until, today).isoformat()
+        signup.access_until = max(nxt - timedelta(days=1), today).isoformat()
         signup.note(f"cancelled by customer, access until {signup.access_until}")
         self.store.save(signup)
         await self._tell_admins(f"{signup.name} ({signup.phone}) heeft opgezegd, actief t/m {signup.access_until}.")
         return (
-            f"Je abonnement is opgezegd. Er wordt niets meer afgeschreven. De bot werkt "
-            f"tot en met {signup.access_until}. Stuur vóór die datum 'excel all' om al je "
-            "ritten als Excel te bewaren."
+            "Je abonnement is opgezegd. Er wordt niets meer afgeschreven. De bot werkt "
+            f"tot en met {_nl_date(signup.access_until)}. Stuur vóór die datum 'excel all' om al je "
+            "ritten als Excel te bewaren. Bedacht? Stuur 'opnieuw'."
         )
+
+    async def _pause(self, signup: Signup, today: date) -> str:
+        nxt = await self._next_charge(signup, today)
+        if nxt <= today:
+            return _CHARGE_DAY
+        await self.mollie.cancel_subscription(signup.customer_id, signup.subscription_id)
+        signup.status = PAUSED
+        signup.paid_until = (nxt - timedelta(days=1)).isoformat()
+        signup.note(f"paused by customer, paid until {signup.paid_until}")
+        self.store.save(signup)
+        await self._tell_admins(
+            f"{signup.name} ({signup.phone}, {signup.car_id}) heeft gepauzeerd, betaald t/m {signup.paid_until}.")
+        return (
+            "Je abonnement is gepauzeerd. Er wordt niets meer afgeschreven. Je kunt de bot "
+            f"gewoon gebruiken tot en met {_nl_date(signup.paid_until)}; daarna registreer ik "
+            "geen nieuwe ritten tot je 'hervatten' stuurt. Je ritten blijven bewaard en 'excel' "
+            "werkt altijd."
+        )
+
+    async def _switch(self, signup: Signup, plan: str, today: date) -> str:
+        nxt = await self._next_charge(signup, today)
+        if nxt <= today:
+            return _CHARGE_DAY
+        mandate = await self._usable_mandate(signup)
+        if mandate is None:
+            return ("Je betaalmachtiging is niet meer geldig, dus overstappen lukt nu niet. "
+                    f"Mail ons{self._support()}.")
+        old = signup.subscription_id
+        await self.mollie.cancel_subscription(signup.customer_id, old)
+        try:
+            await self._subscribe(signup, plan, nxt, mandate["id"])
+        except MollieError:
+            # The old subscription is gone and no new one exists: hold the
+            # number as paused (paid period intact) and let the owner fix it.
+            log.exception("plan switch for %s failed after the cancel", signup.id)
+            signup.status = PAUSED
+            signup.paid_until = (nxt - timedelta(days=1)).isoformat()
+            signup.note(f"switch to {plan} failed after cancelling {old}; paused")
+            self.store.save(signup)
+            await self._tell_admins(
+                f"Overstap van {signup.name} ({signup.phone}) naar {_PLAN_NL[plan]} mislukte na "
+                f"het opzeggen van {old}; staat nu op pauze. Kijk in Mollie.")
+            return ("Overstappen lukte niet helemaal. Je abonnement staat even op pauze; je kunt "
+                    f"de bot gewoon blijven gebruiken. We nemen contact op{self._support(' via ')}.")
+        self.store.save(signup)
+        await self._tell_admins(
+            f"{signup.name} ({signup.phone}) stapt over naar {_PLAN_NL[plan]} per {nxt.isoformat()}.")
+        return (
+            f"Je stapt over naar {_PLAN_NL[plan]}. Je huidige periode loopt gewoon door; vanaf "
+            f"{_nl_date(nxt)} wordt {self._price_text(plan)} afgeschreven."
+        )
+
+    # cancel while paused
+    async def _cancel_paused(self, signup: Signup, today: date) -> str:
+        signup.status = CANCELED
+        signup.access_until = signup.paid_until or today.isoformat()
+        signup.note(f"cancelled while paused, access until {signup.access_until}")
+        self.store.save(signup)
+        await self._tell_admins(
+            f"{signup.name} ({signup.phone}) heeft tijdens de pauze opgezegd, toegang t/m {signup.access_until}.")
+        if self._paid(signup.access_until, today):
+            return (f"Je abonnement is opgezegd. De bot werkt tot en met {_nl_date(signup.access_until)}. "
+                    "Stuur vóór die datum 'excel all' om al je ritten als Excel te bewaren.")
+        return ("Je abonnement is opgezegd. Stuur nu 'excel all' als je je ritten nog als Excel "
+                "wilt hebben; bij je volgende bericht daarna haal ik je nummer van de bot.")
+
+    # resume / restart (PAUSED, CANCELED, ENDED)
+    async def _continue(self, signup: Signup, plan: str, today: date) -> str:
+        if signup.status == PAUSED:
+            start = _day_after(signup.paid_until, today)
+        elif signup.status == CANCELED:
+            start = _day_after(signup.access_until, today)
+        else:
+            start = today
+        refusal = self._car_refusal(signup)
+        if refusal:
+            return refusal
+        mandate = await self._usable_mandate(signup)
+        if mandate is None:
+            url = await self._renew_link(signup, plan, start)
+            await self._tell_admins(
+                f"{signup.name} ({signup.phone}) wil verder ({_PLAN_NL[plan]}) maar heeft geen "
+                "geldige machtiging; betaallink gestuurd.")
+            return (
+                "Je betaalmachtiging is niet meer geldig. Rond via deze link een betaling van "
+                f"€ {_nl_money(self.settings.mandate_amount)} af om hem te vernieuwen; daarna loopt je "
+                f"{_PLAN_NL[plan]} abonnement ({self._price_text(plan)}) meteen weer:\n{url}"
+            )
+        was = signup.status
+        await self._subscribe(signup, plan, start, mandate["id"])
+        self.store.save(signup)
+        problem = await self._reinstate(signup)
+        if problem:
+            return problem
+        await self._tell_admins(
+            f"{signup.name} ({signup.phone}, {signup.car_id}) gaat verder na {_STATE_NL[was]}: "
+            f"{_PLAN_NL[plan]} vanaf {start.isoformat()}.")
+        when = "vandaag" if start <= today else f"op {_nl_date(start)}"
+        return (
+            f"Je abonnement loopt weer: {_PLAN_NL[plan]}, {self._price_text(plan)}. De eerste "
+            f"betaling is {when}, via {_mandate_text(mandate)}. Stuur je kilometerstand en "
+            "bestemming zoals altijd."
+        )
+
+    def _car_refusal(self, signup: Signup) -> Optional[str]:
+        """Why this signup cannot get its car back (checked before any money
+        moves); None when the car is still there or can be re-added."""
+        if self._has_car(signup):
+            return None
+        if self.engine.cars.is_registered(signup.phone):
+            return f"Dit nummer is al aan een andere auto gekoppeld. Mail ons{self._support()}."
+        if signup.car_id and self.engine.cars.get(signup.car_id) is not None:
+            return f"Je auto kan niet automatisch terugkomen. Mail ons{self._support()}."
+        if not self.has_room():
+            return "We zitten op dit moment vol. Probeer het later opnieuw."
+        return None
+
+    def _has_car(self, signup: Signup) -> bool:
+        return any(c.car_id == signup.car_id for c in self.engine.cars.cars_for(signup.phone))
+
+    async def _reinstate(self, signup: Signup) -> Optional[str]:
+        """After a new subscription: make sure the car is there (same car id,
+        so the ledger continues) and mark the signup ACTIVE. Saves. Returns the
+        customer's reply when the car could not be added."""
+        if not self._has_car(signup):
+            try:
+                if signup.car_id:
+                    add_car_to_yaml(
+                        self.settings.cars_file, signup.car_id, signup.car_label,
+                        signup.seed_address, signup.seed_odometer, signup.phone,
+                        event_plugins=[], cap_plugin=self.settings.subscriber_cap_plugin,
+                        subscription=signup.id,
+                    )
+                    self.engine.reload_cars()
+                else:
+                    signup.car_id = self._provision(signup)
+            except ValueError as exc:
+                signup.status = ATTENTION
+                signup.note(f"re-provisioning failed: {exc}")
+                self.store.save(signup)
+                await self._tell_admins(
+                    f"{signup.name} ({signup.phone}) betaalt weer, maar auto {signup.car_id} kon "
+                    f"niet terug in cars.yaml: {exc}. Abonnement {signup.subscription_id} loopt.")
+                return ("Je abonnement loopt weer. We zetten je nummer handmatig terug en sturen je "
+                        "binnen een werkdag een bericht.")
+            signup.note(f"car {signup.car_id} back in cars.yaml")
+        signup.status = ACTIVE
+        signup.access_until = signup.paid_until = ""
+        self.store.save(signup)
+        return None
+
+    async def _renew_link(self, signup: Signup, plan: str, start: date) -> str:
+        """A first payment on the existing customer for a fresh mandate; the
+        restart runs when it is paid (:meth:`_renewal`). Reuses an open one."""
+        if signup.renew_payment_id and not signup.renew_failed:
+            try:
+                open_payment = await self.mollie.get_payment(signup.renew_payment_id)
+            except MollieError:
+                open_payment = {}
+            href = ((open_payment.get("_links") or {}).get("checkout") or {}).get("href")
+            if open_payment.get("status") == "open" and href:
+                signup.renew_plan, signup.renew_start = plan, start.isoformat()
+                self.store.save(signup)
+                return href
+        body = {
+            "amount": amount(self.settings.mandate_amount),
+            "customerId": signup.customer_id,
+            "sequenceType": "first",
+            "description": f"RRBot machtiging ({_PLAN_NL[plan]} abonnement, hervatten)",
+            "redirectUrl": self.return_url(signup),
+            "locale": "nl_NL",
+            "metadata": {"signup_id": signup.id, "renew": True},
+        }
+        hook = self._webhook_url()
+        if hook:
+            body["webhookUrl"] = hook
+        payment = await self.mollie.create_payment(body)
+        signup.renew_payment_id = payment["id"]
+        signup.renew_plan, signup.renew_start = plan, start.isoformat()
+        signup.note(f"renew payment {payment['id']} created ({plan})")
+        self.store.save(signup)
+        return payment["_links"]["checkout"]["href"]
+
+    async def _renewal(self, signup: Signup, payment: dict) -> None:
+        """A renew payment changed (webhook or return page). Caller holds the lock."""
+        status = payment.get("status")
+        marker = f"renew {payment['id']} {status}"
+        if signup.noted(marker):
+            return
+        if status in _PAYMENT_DEAD:
+            signup.note(marker)
+            self.store.save(signup)
+            return
+        if status != "paid" or signup.status not in (PAUSED, CANCELED, ENDED):
+            return
+        today = date.today()
+        start = max(date.fromisoformat(signup.renew_start), today) if signup.renew_start else today
+        plan = signup.renew_plan or signup.plan
+        await self._subscribe(signup, plan, start, payment.get("mandateId") or "")
+        signup.note(marker)
+        self.store.save(signup)
+        problem = await self._reinstate(signup)
+        if problem is None:
+            await self._tell_admins(
+                f"{signup.name} ({signup.phone}, {signup.car_id}) heeft een nieuwe machtiging en gaat "
+                f"verder: {_PLAN_NL[plan]} vanaf {start.isoformat()}.")
+        try:
+            await self.notify(signup.phone, problem or (
+                f"Je abonnement loopt weer: {_PLAN_NL[plan]}, {self._price_text(plan)}. Stuur je "
+                "kilometerstand en bestemming zoals altijd."))
+        except Exception:  # pragma: no cover - the restart itself succeeded
+            log.exception("customer notification failed")
+
+    async def _usable_mandate(self, signup: Signup) -> Optional[dict]:
+        """A valid (or still pending) mandate of this customer, preferring the
+        one on file; None when there is none."""
+        if not signup.customer_id:
+            return None
+        ok = [m for m in await self.mollie.list_mandates(signup.customer_id)
+              if m.get("status") in ("valid", "pending")]
+        ok.sort(key=lambda m: m.get("id") != signup.mandate_id)
+        return ok[0] if ok else None
+
+    # --- kept for callers and tests ----------------------------------
+    async def cancel(self, phone: str, today: Optional[date] = None) -> str:
+        return await self.handle(phone, "opzeggen", today) or self._no_subscription()
 
     def expired(self, phone: str, today: Optional[date] = None) -> Optional[str]:
         """If this number's subscription has run out, remove its car and return
@@ -463,10 +869,43 @@ class Billing:
         signup.status = ENDED
         signup.note("access ended; car removed from cars.yaml (ledger kept)")
         self.store.save(signup)
-        return (
-            "Je abonnement is afgelopen, dus ik registreer geen ritten meer. "
-            f"Opnieuw beginnen kan op {self.settings.signup_url}"
-        )
+        return self.ended_text()
+
+    def ended_text(self) -> str:
+        return ("Je abonnement is afgelopen, dus ik registreer geen ritten meer. Je ritten zijn "
+                "bewaard: stuur 'opnieuw' om verder te gaan, of 'abonnement' voor de opties.")
+
+    def paused(self, phone: str, today: Optional[date] = None) -> Optional[str]:
+        """The reply refusing a new trip from a paused number whose paid period
+        is over; None when trips are accepted."""
+        today = today or date.today()
+        signup = self._current(phone)
+        if signup is None or signup.status != PAUSED or self._paid(signup.paid_until, today):
+            return None
+        return ("Je abonnement is gepauzeerd, dus ik registreer geen nieuwe ritten. Stuur "
+                "'hervatten' om verder te gaan, of 'abonnement' voor het menu. 'excel' werkt gewoon.")
+
+    # --- texts --------------------------------------------------------
+    @staticmethod
+    def _paid(until: str, today: date) -> bool:
+        return bool(until) and date.fromisoformat(until) >= today
+
+    def _price_text(self, plan: str) -> str:
+        return f"€ {_nl_money(self.price(plan))} per {'jaar' if plan == 'yearly' else 'maand'}"
+
+    def _amount_text(self, plan: str) -> str:
+        return f"€ {_nl_money(self.price(plan))}"
+
+    def _support(self, sep: str = " op ") -> str:
+        return f"{sep}{self.settings.support_email}" if self.settings.support_email else ""
+
+    def _no_subscription(self) -> str:
+        url = self.settings.signup_url
+        return "Ik vind geen abonnement bij dit nummer." + (f" Aanmelden: {url}" if url else "")
+
+    def _attention(self) -> str:
+        return ("Je aanmelding wordt nog afgerond; we zetten je nummer handmatig aan en sturen je "
+                "binnen een werkdag een bericht.")
 
     async def _tell_admins(self, text: str) -> None:
         for admin in self.settings.admin_list():
@@ -474,3 +913,60 @@ class Billing:
                 await self.notify(admin, text)
             except Exception:  # pragma: no cover - a notification must not break billing
                 log.exception("admin notification failed")
+
+
+# WhatsApp words -> action ("menu", "cancel", "pause", "resume") or a plan.
+COMMANDS = {
+    "abonnement": "menu", "abo": "menu", "subscription": "menu",
+    "opzeggen": "cancel", "unsubscribe": "cancel",
+    "pauzeren": "pause", "pauze": "pause", "pause": "pause",
+    "hervatten": "resume", "opnieuw": "resume", "verlengen": "resume", "resume": "resume",
+    "maandelijks": "monthly", "jaarlijks": "yearly",
+}
+MENU_TTL_S = 30 * 60   # a numbered pick must follow the menu within this time
+
+_CHARGE_DAY = ("Vandaag wordt je volgende termijn afgeschreven, dus dit kan vandaag niet. "
+               "Probeer het morgen nog eens.")
+_MONTHS = ("januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus",
+           "september", "oktober", "november", "december")
+
+
+_STATE_NL = {PAUSED: "pauze", CANCELED: "opzegging", ENDED: "einde abonnement"}
+
+
+def _other(plan: str) -> str:
+    return "yearly" if plan == "monthly" else "monthly"
+
+
+def _nl_date(value) -> str:
+    d = date.fromisoformat(value) if isinstance(value, str) else value
+    return f"{d.day} {_MONTHS[d.month - 1]} {d.year}"
+
+
+def _nl_money(value: str) -> str:
+    return f"{float(value):.2f}".replace(".", ",")
+
+
+def _day_after(until: str, today: date) -> date:
+    """The first unpaid day after ``until``, but not before today."""
+    return max(date.fromisoformat(until) + timedelta(days=1), today) if until else today
+
+
+def _mandate_text(mandate: Optional[dict]) -> str:
+    if not mandate:
+        return "geen geldige machtiging"
+    details = mandate.get("details") or {}
+    method = mandate.get("method")
+    if method == "directdebit":
+        tail = (details.get("consumerAccount") or "").replace(" ", "")[-4:]
+        text = "SEPA-incasso" + (f" van rekening eindigend op {tail}" if tail else "")
+    elif method == "creditcard":
+        tail = (details.get("cardNumber") or "")[-4:]
+        text = (details.get("cardLabel") or "creditcard") + (f" eindigend op {tail}" if tail else "")
+    elif method == "paypal":
+        text = "PayPal"
+    else:
+        text = method or "onbekend"
+    if mandate.get("status") == "pending":
+        text += " (wordt nog verwerkt)"
+    return text

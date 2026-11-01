@@ -17,7 +17,9 @@ from urllib.parse import parse_qsl, quote
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 
-from .billing import ACTIVE, ATTENTION, FAILED, PENDING, Billing, MollieError, SignupError
+from .billing import (
+    ACTIVE, ATTENTION, CANCELED, ENDED, FAILED, PAUSED, PENDING, Billing, MollieError, SignupError,
+)
 from .config import Settings
 
 log = logging.getLogger("rittenregistratie.site")
@@ -120,6 +122,22 @@ def build_router(settings: Settings, billing: Optional[Billing]) -> APIRouter:
             signup = billing.store.get(id)
         if signup is None:
             return page("Aanmelden", "<h1>Onbekende aanmelding</h1><p>Deze link klopt niet.</p>", 404)
+        if signup.renew_payment_id and signup.status == ACTIVE:
+            return page("Welkom terug", (
+                f"<h1>Welkom terug, {html.escape(signup.name.split()[0])}!</h1>"
+                "<p>Je machtiging is vernieuwd en je abonnement loopt weer. Stuur in WhatsApp "
+                "je kilometerstand en bestemming zoals altijd.</p>"
+            ))
+        if signup.renew_payment_id and signup.status in (PAUSED, CANCELED, ENDED):
+            if signup.renew_failed:
+                return page("Niet gelukt", (
+                    "<h1>De machtiging is niet gelukt</h1><p>Er is niets afgeschreven. Stuur "
+                    "'hervatten' in WhatsApp voor een nieuwe link.</p>"
+                ))
+            return page("Even geduld", (
+                "<h1>Betaling wordt verwerkt</h1><p>Mollie heeft je betaling nog niet bevestigd. "
+                "Deze pagina ververst zichzelf.</p>"
+            ), head_extra='<meta http-equiv="refresh" content="5">')
         if signup.status == ACTIVE:
             number = settings.whatsapp_public_number
             link = f"https://wa.me/{number}?text={quote('start')}" if number else ""
