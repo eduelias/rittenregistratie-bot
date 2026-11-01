@@ -121,6 +121,7 @@ class Signup:
     renew_payment_id: str = ""
     renew_plan: str = ""
     renew_start: str = ""       # ISO date the new subscription should start
+    data_deleted_at: str = ""   # set by retention.py once the trip data is gone
 
     def note(self, text: str) -> None:
         self.events.append(f"{datetime.now().isoformat(timespec='seconds')} {text}")
@@ -869,11 +870,19 @@ class Billing:
         signup.status = ENDED
         signup.note("access ended; car removed from cars.yaml (ledger kept)")
         self.store.save(signup)
-        return self.ended_text()
+        return self.ended_text(signup)
 
-    def ended_text(self) -> str:
-        return ("Je abonnement is afgelopen, dus ik registreer geen ritten meer. Je ritten zijn "
-                "bewaard: stuur 'opnieuw' om verder te gaan, of 'abonnement' voor de opties.")
+    def ended_text(self, signup=None) -> str:
+        """The notice for a number whose subscription ended. Pass the phone's
+        signup (or the phone itself) so it can say whether the trips are kept."""
+        if isinstance(signup, str):
+            signup = self._current(signup)
+        if signup is not None and signup.data_deleted_at:
+            return ("Je abonnement is afgelopen en je ritten zijn na de bewaartermijn verwijderd. "
+                    "Stuur 'opnieuw' om opnieuw te beginnen, of 'abonnement' voor de opties.")
+        return ("Je abonnement is afgelopen, dus ik registreer geen ritten meer. Je ritten "
+                f"worden nog {self.settings.retention_days} dagen bewaard: stuur 'opnieuw' om "
+                f"verder te gaan, of vraag een kopie{self._support(' via ')}. 'abonnement' toont de opties.")
 
     def paused(self, phone: str, today: Optional[date] = None) -> Optional[str]:
         """The reply refusing a new trip from a paused number whose paid period

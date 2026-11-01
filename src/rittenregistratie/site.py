@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import html
 import logging
+import time
+from collections import deque
 from pathlib import Path
 from string import Template
-from typing import Optional
+from typing import Deque, Dict, Optional
 from urllib.parse import parse_qsl, quote
 
 from fastapi import APIRouter, Request
@@ -40,6 +42,38 @@ async def _form(request: Request) -> dict:
     are plain urlencoded posts, so this saves a python-multipart dependency."""
     body = (await request.body())[:20_000].decode("utf-8", "replace")
     return dict(parse_qsl(body, keep_blank_values=True))
+
+
+class SignupLimiter:
+    """Signup attempts per client IP per hour, and in total per hour.
+
+    Every form post creates a Mollie customer, so an unthrottled form lets
+    anyone fill the Mollie account with junk. In memory: a restart resets it,
+    which is fine for this. The client IP is what uvicorn reports; behind
+    Caddy on 127.0.0.1 that is X-Forwarded-For (uvicorn trusts it from
+    127.0.0.1 by default)."""
+
+    WINDOW = 3600.0
+
+    def __init__(self, per_ip: int, total: int, clock=time.monotonic):
+        self.per_ip, self.total, self._clock = per_ip, total, clock
+        self._by_ip: Dict[str, Deque[float]] = {}
+        self._all: Deque[float] = deque()
+
+    def _trim(self, q: Deque[float], now: float) -> None:
+        while q and now - q[0] > self.WINDOW:
+            q.popleft()
+
+    def allow(self, ip: str) -> bool:
+        now = self._clock()
+        q = self._by_ip.setdefault(ip or "?", deque())
+        self._trim(q, now)
+        self._trim(self._all, now)
+        if len(q) >= self.per_ip or len(self._all) >= self.total:
+            return False
+        q.append(now)
+        self._all.append(now)
+        return True
 
 
 def build_router(settings: Settings, billing: Optional[Billing]) -> APIRouter:
@@ -98,8 +132,16 @@ def build_router(settings: Settings, billing: Optional[Billing]) -> APIRouter:
     if billing is None:
         return router
 
+    limiter = SignupLimiter(settings.signup_limit_per_ip, settings.signup_limit_total)
+
     @router.post("/aanmelden")
     async def signup(request: Request) -> Response:
+        ip = request.client.host if request.client else ""
+        if not limiter.allow(ip):
+            log.warning("Signup refused by the rate limit (%s).", ip)
+            return page("Aanmelden", '<h1>Even rustig aan</h1><p class="error">Er zijn net te veel '
+                        'aanmeldingen geprobeerd. Probeer het over een uur opnieuw, of mail ons.</p>',
+                        status=429)
         form = await _form(request)
         try:
             checkout = await billing.start(form)

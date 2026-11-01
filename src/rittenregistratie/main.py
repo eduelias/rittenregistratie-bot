@@ -261,7 +261,7 @@ async def webhook(request: Request) -> Response:
         # A former subscriber (car removed when the subscription ended) may
         # restart with the same ledger; anything else gets the ended notice.
         if _billing is not None and _billing.returning(sender):
-            reply = await _subscription_reply(sender, text or "") or _billing.ended_text()
+            reply = await _subscription_reply(sender, text or "") or _billing.ended_text(sender)
             await _send_all(sender, reply, extra_notify)
             return Response(status_code=200, content="ok")
         # Onboarding: record a join request and notify admins.

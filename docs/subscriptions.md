@@ -179,8 +179,15 @@ Legal and business:
 - [x] Terms (`site/voorwaarden.html`), privacy statement
       (`site/privacy.html`) and the model withdrawal form
       (`site/herroeping.html`) published, version 1 of 2026-11-01. Not
-      reviewed by a lawyer. They promise deletion of trip data three months
-      after a subscription ends: build that cleanup (it does not exist yet).
+      reviewed by a lawyer.
+- [x] Trip data of a former subscriber is deleted `RIT_RETENTION_DAYS` (90)
+      after access ended, as the privacy statement promises:
+      `python -m rittenregistratie.retention [--apply]`, daily via
+      `deploy/rittenregistratie-retention.{service,timer}`. The signup record
+      (billing data) stays.
+- [ ] The privacy statement promises server logs for at most 30 days. The
+      bot logs through journald on du7, whose retention is system-wide; set
+      `MaxRetentionSec=30day` there, or start uvicorn with `--no-access-log`.
 - [ ] **Business address.** Dutch distance-selling law (art. 6:230m BW)
       requires a geographic address on the site. Only KvK and VAT number are
       shown now; add the address (or a business address service) to
@@ -231,9 +238,8 @@ Operations:
 - [ ] Admin notifications are WhatsApp texts. They only arrive within 24 hours
       of the admin's last message to the bot (error 131047). Either message
       the bot daily or add a utility template for admin alerts.
-- [ ] Rate-limit `POST /aanmelden`. Each post creates a Mollie customer;
-      Caddy's `rate_limit` needs a plugin build, so use fail2ban or an in-app
-      limit per IP.
+- [x] `POST /aanmelden` is rate-limited in the app: 5 per client IP and 60
+      in total per hour (`RIT_SIGNUP_LIMIT_PER_IP`, `RIT_SIGNUP_LIMIT_TOTAL`).
 - [ ] Back up `data/` (ledgers, `signups.json`, per-car learned places) off
       the Pi.
 - [ ] The bot's own replies are still in English; only the welcome/help and
