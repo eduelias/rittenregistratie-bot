@@ -44,6 +44,10 @@ warn = "rittenregistratie.plugins.privatecap_warn:WarnPlugin"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# The website's pages and stylesheet (site.py).
+[tool.setuptools.package-data]
+rittenregistratie = ["site/*.html", "site/*.css"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 asyncio_mode = "auto"

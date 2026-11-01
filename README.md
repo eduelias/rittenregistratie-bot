@@ -178,6 +178,14 @@ keeps their existing trip logs on disk.
 
 Set `RIT_ONBOARDING_ENABLED=false` to silently ignore unregistered numbers.
 
+### Paid signup (optional)
+
+With `RIT_MOLLIE_API_KEY` and `RIT_PUBLIC_BASE_URL` set, the app also serves
+a Dutch landing page with a signup form. New customers pay through Mollie and
+their number is added automatically, as a subscriber car with no event
+plugins and its own location book. Unregistered numbers get the signup link
+instead of a join request. See [`docs/subscriptions.md`](docs/subscriptions.md).
+
 ## Storage and export
 
 Trips are stored **only** in the append-only ledger

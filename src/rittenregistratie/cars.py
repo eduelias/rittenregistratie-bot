@@ -11,6 +11,10 @@ own plugins. ``cars.yaml``::
       phones: ["31612345678", "31698765432"]   # both report for this car
       event_plugins: ["reallocate"]   # optional; default: RIT_EVENT_PLUGINS
       cap_plugin: "warn"              # optional; default: RIT_PRIVATE_CAP_PLUGIN
+    golf_2:
+      label: "Golf"
+      phones: ["31687654321"]
+      subscription: "Xy3...k"         # a paying subscriber's car (see billing.py)
     van:
       label: "Delivery van"
       seed_address: "Depot"
@@ -56,6 +60,13 @@ class Car:
     # Per-car plugin selection. None = fall back to the global setting.
     event_plugins: Optional[List[str]] = None
     cap_plugin: Optional[str] = None
+    # Signup id when the car belongs to a paying subscriber. Such a car only
+    # gets the plugins RIT_SUBSCRIBER_* allow, and its own location book.
+    subscription: Optional[str] = None
+
+    @property
+    def is_subscriber(self) -> bool:
+        return bool(self.subscription)
 
     def matches(self, token: str) -> bool:
         """True if ``token`` names this car by id or label (case-insensitive)."""
@@ -78,6 +89,7 @@ class CarRegistry:
                 phones=[normalize_phone(p) for p in val.get("phones", []) if normalize_phone(p)],
                 event_plugins=_plugin_list(val.get("event_plugins")),
                 cap_plugin=(str(val["cap_plugin"]).strip() or None) if val.get("cap_plugin") else None,
+                subscription=str(val["subscription"]) if val.get("subscription") else None,
             )
             self._cars[car_id] = car
             for phone in dict.fromkeys(car.phones):  # de-duplicate, keep order
@@ -139,6 +151,7 @@ def add_car_to_yaml(
     path: Path, car_id: str, label: str, seed_address: str,
     seed_odometer: int, phone: str,
     event_plugins: Optional[List[str]] = None, cap_plugin: Optional[str] = None,
+    subscription: Optional[str] = None,
 ) -> None:
     """Add a new car for ``phone``. The phone may already own other cars."""
     data = _load(path)
@@ -157,6 +170,8 @@ def add_car_to_yaml(
         entry["event_plugins"] = list(event_plugins)
     if cap_plugin:
         entry["cap_plugin"] = cap_plugin
+    if subscription:
+        entry["subscription"] = subscription
     data[car_id] = entry
     _save(path, data)
 

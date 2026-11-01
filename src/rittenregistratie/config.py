@@ -71,6 +71,33 @@ class Settings(BaseSettings):
     # coordinates to count as that place (per-location radius_m overrides).
     place_radius_m: int = 300
 
+    # Paying subscribers (cars with ``subscription:`` in cars.yaml). They never
+    # inherit RIT_EVENT_PLUGINS or the per-number cap override: only the event
+    # plugins named here load for them (empty = none), and their cap plugin is
+    # always this one. A plugin meant for the operator's own car cannot reach a
+    # customer by accident.
+    subscriber_event_plugins: str = ""
+    subscriber_cap_plugin: str = "warn"
+
+    # Subscriptions through Mollie (billing.py). Empty key = signup disabled;
+    # a ``test_`` key runs everything in Mollie's test mode.
+    mollie_api_key: str = ""
+    mollie_api_url: str = "https://api.mollie.com/v2"
+    # Where this app is reachable from the internet, e.g. https://rrbot.nl. Used
+    # for Mollie's redirect and webhook URLs and in the signup link the bot
+    # sends to unregistered numbers.
+    public_base_url: str = ""
+    # The bot's number as customers dial it (digits only), for wa.me links.
+    whatsapp_public_number: str = ""
+    trial_days: int = 14
+    price_monthly: str = "4.95"
+    price_yearly: str = "49.00"
+    # The first payment only sets up the mandate for the subscription.
+    mandate_amount: str = "0.01"
+    # Shown in the website footer and legal pages.
+    support_email: str = ""
+    company_line: str = "KvK [nummer] · btw [nummer]"
+
     # Compliance
     private_cap_km: int = 500
 
@@ -117,9 +144,29 @@ class Settings(BaseSettings):
     def raw_ledger_file(self, car_id: str) -> Path:
         return self.data_dir / f"raw-ledger-{car_id}.jsonl"
 
+    def car_learned_locations_file(self, car_id: str) -> Path:
+        """A subscriber's own learned addresses (never shared between cars)."""
+        return self.data_dir / f"locations-learned-{car_id}.yaml"
+
+    def subscriber_event_plugin_list(self) -> list[str]:
+        return [n.strip() for n in self.subscriber_event_plugins.split(",") if n.strip()]
+
     @property
     def onboarding_file(self) -> Path:
         return self.data_dir / "onboarding.json"
+
+    @property
+    def signups_file(self) -> Path:
+        """Subscriptions taken through the website (billing.py)."""
+        return self.data_dir / "signups.json"
+
+    @property
+    def billing_enabled(self) -> bool:
+        return bool(self.mollie_api_key and self.public_base_url)
+
+    @property
+    def signup_url(self) -> str:
+        return self.public_base_url.rstrip("/") + "/#aanmelden" if self.public_base_url else ""
 
     @property
     def active_car_file(self) -> Path:

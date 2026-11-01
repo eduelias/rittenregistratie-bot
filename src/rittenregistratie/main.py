@@ -11,10 +11,12 @@ from starlette.background import BackgroundTask
 from . import whatsapp
 from .config import get_settings
 from .engine import Engine, EngineError, ExportRequest, UnknownCarError
+from .billing import Billing, Mollie, MollieError
 from .events import hook_event
 from .export import ExportError
 from .models import VehicleTripReport
 from .parser import ParseError
+from .site import build_router
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("rittenregistratie")
@@ -22,6 +24,24 @@ log = logging.getLogger("rittenregistratie")
 app = FastAPI(title="rittenregistratie-bot")
 _settings = get_settings()
 _engine = Engine(_settings)
+
+
+async def _notify(phone: str, text: str) -> bool:
+    return await whatsapp.send_message(
+        _settings.whatsapp_token, _settings.whatsapp_phone_number_id, phone, text,
+        graph_url=f"https://graph.facebook.com/{_settings.whatsapp_graph_version}",
+    )
+
+
+_billing = (
+    Billing(_settings, _engine, Mollie(_settings.mollie_api_key, _settings.mollie_api_url), _notify)
+    if _settings.billing_enabled else None
+)
+app.include_router(build_router(_settings, _billing))
+
+# Subscription commands a subscriber can send over WhatsApp.
+_SUBSCRIPTION_WORDS = {"abonnement": "status", "subscription": "status",
+                       "opzeggen": "cancel", "unsubscribe": "cancel"}
 
 
 @app.get("/health")
@@ -202,6 +222,14 @@ async def webhook(request: Request) -> Response:
     # Extra reply recipients (e.g. notify admins of a new join request).
     extra_notify: list[tuple[str, str]] = []
 
+    # A subscription that ran out: the number is removed here, on its first
+    # message after the end date, and told how to come back.
+    if _billing is not None and _engine.cars.is_registered(sender):
+        ended = _billing.expired(sender)
+        if ended:
+            await _send_all(sender, ended, extra_notify)
+            return Response(status_code=200, content="ok")
+
     is_registered = _engine.cars.is_registered(sender)
     is_admin = _engine.is_admin(sender)
 
@@ -228,6 +256,13 @@ async def webhook(request: Request) -> Response:
         if not _settings.onboarding_enabled:
             log.warning("Ignoring message from unregistered number %s", sender)
             return Response(status_code=200, content="ok")
+        if _billing is not None:
+            # With paid signup, the website is the way in; no join requests.
+            await _send_all(sender, (
+                "Hoi! Dit is RRBot, je rittenregistratie via WhatsApp. Dit nummer is nog "
+                f"niet aangemeld. Probeer het 14 dagen gratis: {_settings.signup_url}"
+            ), extra_notify)
+            return Response(status_code=200, content="ok")
         if _engine.onboarding.has(sender):
             reply = "Your request to join is still pending admin approval. Hang tight!"
         else:
@@ -248,6 +283,18 @@ async def webhook(request: Request) -> Response:
         await _send_all(sender, reply, extra_notify)
         return Response(status_code=200, content="ok")
     else:
+        word = (text or "").strip().lower()
+        if _billing is not None and word in _SUBSCRIPTION_WORDS:
+            try:
+                if _SUBSCRIPTION_WORDS[word] == "cancel":
+                    reply = await _billing.cancel(sender)
+                else:
+                    reply = await _billing.status_text(sender)
+            except MollieError:
+                log.exception("subscription command failed")
+                reply = "Dat lukte nu niet. Probeer het later nog eens, of mail ons."
+            await _send_all(sender, reply, extra_notify)
+            return Response(status_code=200, content="ok")
         # Car selection for people who report for several cars.
         try:
             user_reply = _engine.handle_user_command(text or "", sender)
