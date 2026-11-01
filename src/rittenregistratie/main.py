@@ -16,6 +16,7 @@ from .billing import Billing, Mollie, MollieError
 from .events import hook_event
 from .export import ExportError
 from .i18n import parse_language_command, set_current, t
+from .window import InboundWindow
 from .models import VehicleTripReport
 from .parser import ParseError
 from .site import build_router
@@ -35,11 +36,69 @@ async def _notify(phone: str, text: str) -> bool:
     )
 
 
+_window = InboundWindow(_settings.last_inbound_file)
+
+
+async def _alert(phone: str, text: str) -> bool:
+    """A message to an admin. Plain text while their 24-hour window is open;
+    else the alert template (one line, in their language, English as the
+    fallback), since a plain text would be accepted and then dropped."""
+    name = (_settings.whatsapp_alert_template or "").strip()
+    if not name or _window.is_open(phone):
+        return await _notify(phone, text)
+    line = re.sub(r"\s{2,}", " ", " · ".join(
+        part.strip() for part in str(text).splitlines() if part.strip()))[:900]
+    graph_url = f"https://graph.facebook.com/{_settings.whatsapp_graph_version}"
+    for code in dict.fromkeys((_engine.languages.of(phone), "en")):
+        if await whatsapp.send_template(
+            _settings.whatsapp_token, _settings.whatsapp_phone_number_id, phone, name, [line],
+            language=code, graph_url=graph_url,
+        ):
+            return True
+    log.warning("Alert template %r refused for %s; sending plain text.", name, phone)
+    return await _notify(phone, text)
+
+
+async def _send_code(phone: str, code: str) -> bool:
+    """A one-time code for the website's cancel button: the authentication
+    template, which reaches the number whatever its 24-hour window."""
+    name = (_settings.whatsapp_code_template or "").strip()
+    if not name:
+        return False
+    graph_url = f"https://graph.facebook.com/{_settings.whatsapp_graph_version}"
+    for lang in dict.fromkeys((_engine.languages.of(phone), "en")):
+        if await whatsapp.send_auth_code(
+            _settings.whatsapp_token, _settings.whatsapp_phone_number_id, phone, name, code,
+            language=lang, graph_url=graph_url,
+        ):
+            return True
+    return False
+
+
+async def _confirm_cancel(phone: str, reply: str, until: str) -> bool:
+    """Confirm a cancellation made on the website on WhatsApp: the bot's own
+    reply while the window is open, else the cancellation template."""
+    name = (_settings.whatsapp_cancel_template or "").strip()
+    if _window.is_open(phone) or not name or not until:
+        return await _notify(phone, reply)
+    from .i18n import date_text
+    graph_url = f"https://graph.facebook.com/{_settings.whatsapp_graph_version}"
+    for lang in dict.fromkeys((_engine.languages.of(phone), "en")):
+        if await whatsapp.send_template(
+            _settings.whatsapp_token, _settings.whatsapp_phone_number_id, phone, name,
+            [date_text(until, lang)], language=lang, graph_url=graph_url,
+        ):
+            return True
+    return await _notify(phone, reply)
+
+
 _billing = (
-    Billing(_settings, _engine, Mollie(_settings.mollie_api_key, _settings.mollie_api_url), _notify)
+    Billing(_settings, _engine, Mollie(_settings.mollie_api_key, _settings.mollie_api_url),
+            _notify, alert=_alert)
     if _settings.billing_enabled else None
 )
-app.include_router(build_router(_settings, _billing))
+app.include_router(build_router(_settings, _billing, send_code=_send_code,
+                                confirm_cancel=_confirm_cancel))
 
 
 async def _subscription_reply(sender: str, text: str) -> str | None:
@@ -233,6 +292,8 @@ async def webhook(request: Request) -> Response:
     message_id = msg.get("id")
     location = msg.get("location")
     text = msg.get("text")
+    # The sender's 24-hour window is open again (window.py).
+    _window.seen(sender)
     # Everything below answers in the sender's language (i18n.py).
     set_current(_engine.languages.of(sender))
 
@@ -407,7 +468,11 @@ async def _send_all(
         if not delivered:
             # Privacy: do not write message/reply content to the journal.
             log.warning("Reply not delivered to %s (see WhatsApp error above).", sender)
+    admins = set(_settings.admin_list())
     for to, body in extra:
+        if to in admins:
+            await _alert(to, body)
+            continue
         await whatsapp.send_message(
             _settings.whatsapp_token, _settings.whatsapp_phone_number_id,
             to, body, graph_url=graph_url,

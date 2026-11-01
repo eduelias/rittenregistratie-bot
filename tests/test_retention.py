@@ -86,3 +86,12 @@ def test_signup_limiter_per_ip_and_total():
     assert lim.allow("b") and not lim.allow("c")       # total of 3 reached
     now[0] = 3601
     assert lim.allow("a") and lim.allow("c")           # window passed
+
+
+def test_apply_also_forgets_language_and_last_message(settings):
+    _signup(settings, "s1", "golf", "31600000002", ENDED, 120)
+    settings.languages_file.write_text(json.dumps({"31600000002": "en", "31600000001": "nl"}))
+    settings.last_inbound_file.write_text(json.dumps({"31600000002": "2026-01-01T00:00:00"}))
+    retention.apply(settings, retention.due(settings, TODAY))
+    assert json.loads(settings.languages_file.read_text()) == {"31600000001": "nl"}
+    assert json.loads(settings.last_inbound_file.read_text()) == {}

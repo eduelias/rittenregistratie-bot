@@ -258,11 +258,14 @@ class Billing:
     """Signup and subscription lifecycle. ``engine`` provides cars and reload;
     ``notify(phone, text)`` sends a WhatsApp message (admins, customers)."""
 
-    def __init__(self, settings: Settings, engine, mollie: Mollie, notify: Notify):
+    def __init__(self, settings: Settings, engine, mollie: Mollie, notify: Notify,
+                 alert: Optional[Notify] = None):
         self.settings = settings
         self.engine = engine
         self.mollie = mollie
         self.notify = notify
+        # Messages to admins: may need a template when their window is closed.
+        self.alert = alert or notify
         self.store = SignupStore(settings.signups_file)
         self._lock = asyncio.Lock()
         # phone -> (expiry on the monotonic clock, the menu's (action, plan)s).
@@ -494,6 +497,16 @@ class Billing:
         live = [s for s in mine if s.status in (ACTIVE, PAUSED, CANCELED, ATTENTION)]
         ended = [s for s in mine if s.status == ENDED]
         return (live or ended or [None])[-1]
+
+    def can_cancel(self, phone: str) -> bool:
+        """True when this number has a subscription the website may cancel."""
+        signup = self._current(phone)
+        return signup is not None and signup.status in (ACTIVE, PAUSED)
+
+    def access_until(self, phone: str) -> str:
+        """The last day a cancelled number may use the bot (ISO), or ''."""
+        signup = self._current(phone)
+        return signup.access_until if signup is not None and signup.status == CANCELED else ""
 
     def returning(self, phone: str) -> bool:
         """True for a number whose subscription ended (its car was removed):
@@ -896,7 +909,7 @@ class Billing:
         """An alert to every admin, each in their own language."""
         for admin in self.settings.admin_list():
             try:
-                await self.notify(admin, render_parts([(key, kw)], self._lang(admin)))
+                await self.alert(admin, render_parts([(key, kw)], self._lang(admin)))
             except Exception:  # pragma: no cover - a notification must not break billing
                 log.exception("admin notification failed")
 

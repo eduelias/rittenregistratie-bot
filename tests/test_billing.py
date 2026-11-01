@@ -2,7 +2,9 @@
 
 # These tests check the Dutch customer texts (the default language).
 BOT_LANGUAGE = "nl"
+import asyncio
 import importlib
+import re
 import json
 from datetime import date, timedelta
 
@@ -431,3 +433,94 @@ async def test_admin_alert_in_the_admin_language_customer_text_in_theirs(setup):
     reply = await billing.handle("31612345678", "subscription")
     assert reply.startswith("Your subscription is active: monthly, € 4.95 per month.")
     assert "Reply with the number of your choice:" in reply
+
+
+def _activate_over_http(client, main, fake):
+    client.post("/aanmelden", data=FORM, follow_redirects=False)
+    signup = main._billing.store.all()[0]
+    fake.payments[signup.first_payment_id]["status"] = "paid"
+    client.post("/billing/mollie/webhook", data={"id": signup.first_payment_id})
+    return signup
+
+
+def test_cancel_button_with_whatsapp_code(app, monkeypatch):
+    client, main, fake = app
+    _activate_over_http(client, main, fake)
+    codes, templates = [], []
+
+    async def fake_code(token, pid, to, name, code, language="en", graph_url=""):
+        codes.append((to, name, code, language))
+        return True
+
+    async def fake_template(token, pid, to, name, params, language="en", graph_url=""):
+        templates.append((to, name, params, language))
+        return True
+
+    monkeypatch.setattr(main.whatsapp, "send_auth_code", fake_code)
+    monkeypatch.setattr(main.whatsapp, "send_template", fake_template)
+    assert "Abonnement opzeggen" in client.get("/").text            # footer link
+    assert 'action="/opzeggen"' in client.get("/opzeggen").text
+    page = client.post("/opzeggen", data={"phone": "06 1234 5678"}).text
+    assert "code van 6" in page and 'value="31612345678"' in page
+    (to, name, code, lang), = codes
+    assert (to, name, lang) == ("31612345678", "cancel_code", "nl") and len(code) == 6
+    bad = client.post("/opzeggen/bevestig", data={"phone": "31612345678", "code": "000000"
+                                                  if code != "000000" else "111111"})
+    assert bad.status_code == 400 and "klopt niet" in bad.text
+    ok = client.post("/opzeggen/bevestig", data={"phone": "31612345678", "code": code})
+    assert ok.status_code == 200 and "Je abonnement is opgezegd" in ok.text
+    assert any(c[0] == "cancel" for c in fake.calls)
+    # The customer never wrote to the bot, so the confirmation is the template.
+    assert templates[-1][:2] == ("31612345678", "subscription_cancelled")
+    assert re.match(r"\d+ \w+ \d{4}", templates[-1][2][0])
+    # A used code does not work twice.
+    assert client.post("/opzeggen/bevestig", data={"phone": "31612345678", "code": code}).status_code == 400
+
+
+def test_cancel_form_does_not_reveal_who_is_a_customer(app, monkeypatch):
+    client, main, fake = app
+    sent = []
+
+    async def fake_code(*a, **kw):
+        sent.append(a)
+        return True
+
+    monkeypatch.setattr(main.whatsapp, "send_auth_code", fake_code)
+    page = client.post("/opzeggen", data={"phone": "06 9999 9999"}).text
+    assert "code van 6" in page and not sent
+
+
+def test_cancel_codes_expire_and_are_limited():
+    from rittenregistratie.site import CancelCodes
+    now = [0.0]
+    codes = CancelCodes(clock=lambda: now[0])
+    first = codes.issue("316")
+    assert codes.issue("316") and codes.issue("316") and codes.issue("316") is None
+    now[0] = 601
+    assert not codes.check("316", first)
+    now[0] = 4000
+    c = codes.issue("316")
+    for _ in range(5):
+        codes.check("316", "999999" if c != "999999" else "000000")
+    assert not codes.check("316", c)                        # out of tries
+
+
+def test_admin_alerts_use_the_template_until_the_admin_writes(app, monkeypatch):
+    client, main, fake = app
+    templates, texts = [], []
+
+    async def fake_template(token, pid, to, name, params, language="en", graph_url=""):
+        templates.append((to, name, params, language))
+        return True
+
+    async def fake_send(token, pid, to, body, **kw):
+        texts.append((to, str(body)))
+        return True
+
+    monkeypatch.setattr(main.whatsapp, "send_template", fake_template)
+    monkeypatch.setattr(main.whatsapp, "send_message", fake_send)
+    asyncio.run(main._alert(ADMIN, "Nieuwe abonnee: X\nregel 2"))
+    assert templates[-1] == (ADMIN, "owner_alert", ["Nieuwe abonnee: X · regel 2"], "nl")
+    client.post("/webhook", json=_wa("ping", ADMIN))        # the admin writes: window open
+    asyncio.run(main._alert(ADMIN, "Nieuwe abonnee: Y"))
+    assert texts[-1] == (ADMIN, "Nieuwe abonnee: Y") and len(templates) == 1

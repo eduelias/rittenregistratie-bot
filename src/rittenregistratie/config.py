@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     # destination, km, purpose, odometer. Empty = send plain text.
     whatsapp_trip_template: str = ""
     whatsapp_trip_template_language: str = "en"
+    # Utility template (one body parameter) for alerts to admins whose 24-hour
+    # window is closed, in en and nl. Empty = always plain text.
+    whatsapp_alert_template: str = "owner_alert"
+    # Authentication template (copy-code button) for the website's cancel
+    # button: the code that proves the visitor holds the number.
+    whatsapp_code_template: str = "cancel_code"
+    # Utility template confirming a cancellation made on the website (one
+    # parameter: the last day of access), for when the window is closed.
+    whatsapp_cancel_template: str = "subscription_cancelled"
     allowed_sender: str = ""  # E.164 without '+', e.g. 31612345678
     # Admin numbers (comma-separated, E.164 without '+') who can approve joins.
     admin_numbers: str = ""
@@ -168,6 +177,11 @@ class Settings(BaseSettings):
     def signups_file(self) -> Path:
         """Subscriptions taken through the website (billing.py)."""
         return self.data_dir / "signups.json"
+
+    @property
+    def last_inbound_file(self) -> Path:
+        """When each number last wrote to the bot (window.py)."""
+        return self.data_dir / "last-inbound.json"
 
     @property
     def languages_file(self) -> Path:
