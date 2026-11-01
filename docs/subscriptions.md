@@ -191,10 +191,9 @@ Legal and business:
       journald has `MaxRetentionSec=30day` in
       `/etc/systemd/journald.conf.d/30-retention.conf` (2026-11-01, older
       journals vacuumed). The bot logs only to journald.
-- [ ] Caddy's container log (Docker `json-file`, du7/dns-stack) has no time
-      limit and holds remote IPs from TLS handshakes and ACME. Switch the
-      `caddy` service to `logging: driver: journald` so the 30 days apply;
-      this recreates the container (a few seconds without any public site).
+- [x] Caddy logs to journald too (`logging: driver: journald` in
+      du7/dns-stack, 2026-11-01), so the 30 days cover it. Read with
+      `journalctl CONTAINER_NAME=caddy`.
 - [ ] **Business address.** Dutch distance-selling law (art. 6:230m BW)
       requires a geographic address on the site. Only KvK and VAT number are
       shown now; add the address (or a business address service) to
