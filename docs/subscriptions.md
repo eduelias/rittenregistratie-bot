@@ -137,6 +137,25 @@ Not covered by this run, but by unit tests: Mollie calling the webhook
 (not possible with a local URL; it gets exercised for real on rrbot.nl),
 recurring payment failures, and removal after `access_until`.
 
+## Statistics (analytics.py)
+
+First-party only; no cookies, no third party, no consent banner needed (the
+privacy statement says what is counted).
+
+- **Page counts:** per day, views per public page, referring domain,
+  `utm_source` / `utm_campaign`, signup form posts, and crawlers/link-preview
+  fetchers apart. Stored as daily totals in `data/analytics.json` (400 days):
+  no IP, no cookie, no visitor id. Tag links like
+  `https://rrbot.nl/?utm_source=linkedin&utm_campaign=launch`.
+- **Funnel and money** from `data/signups.json`: signups started, first
+  payments, trials that ended and how many turned into a paid charge, pauses,
+  cancellations, subscriptions running now, MRR (paying and incl. trial).
+- **Where to see it:** send `stats` (or `stats 30`) to the bot from an admin
+  number, or run `python -m rittenregistratie.analytics report --days 7`.
+  Every Monday at 08:30 `deploy/rittenregistratie-stats.timer` sends the
+  7-day report to the first `RIT_ADMIN_NUMBERS` through famulus
+  (`deploy/weekly-stats.sh`), which is not bound by the bot's 24-hour window.
+
 ## Live state (2026-11-01)
 
 - rrbot.nl: Cloudflare zone active (nameservers chuck/jessica.ns.cloudflare.com

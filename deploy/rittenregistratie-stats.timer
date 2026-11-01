@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly rittenregistratie statistics (Monday morning)
+
+[Timer]
+OnCalendar=Mon *-*-* 08:30
+Persistent=true
+
+[Install]
+WantedBy=timers.target

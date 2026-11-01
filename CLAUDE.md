@@ -68,6 +68,10 @@ No ruff config here (unlike the private-plugins sibling) — CI runs pytest only
 - `billing.py` + `site.py` (+ `site/*.html`) — rrbot.nl landing page and paid
   signup through Mollie: first payment → subscription → car with
   `subscription:` in cars.yaml. See `docs/subscriptions.md`.
+- `analytics.py` — cookieless daily page counts (`data/analytics.json`) and the
+  subscription funnel; admin `stats [days]`, weekly report via famulus.
+- `retention.py` — deletes former subscribers' trip data after
+  `RIT_RETENTION_DAYS`; daily timer in `deploy/`.
 
 ## Config / secrets (`config.py`, prefix `RIT_`, `.env` not committed)
 

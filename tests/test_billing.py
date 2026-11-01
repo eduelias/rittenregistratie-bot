@@ -384,3 +384,30 @@ def test_icons_meta_and_structured_data(app):
     terms = client.get("/voorwaarden").text
     assert '<link rel="canonical" href="https://rrbot.example/voorwaarden">' in terms
     assert terms.count('<meta name="description"') == 1
+
+
+def test_pages_are_counted_and_admin_gets_stats(app, monkeypatch):
+    import json as _json
+    client, main, _ = app
+    ua = {"user-agent": "Mozilla/5.0 Safari", "referer": "https://www.google.com/"}
+    client.get("/?utm_campaign=test", headers=ua)
+    client.get("/privacy", headers=ua)
+    client.get("/", headers={"user-agent": "facebookexternalhit/1.1"})
+    client.post("/aanmelden", data=dict(FORM, email="x"))       # invalid, still a form post
+    days = _json.loads(main._settings.analytics_file.read_text())
+    (day,) = days.values()
+    assert day["views"] == {"/": 1, "/privacy": 1} and day["bots"] == 1
+    assert day["referrers"] == {"google.com": 2} and day["campaigns"] == {"test": 1}
+    assert day["forms"] == 1
+    sent = []
+
+    async def fake_send(token, pid, to, body, **kw):
+        sent.append((to, str(body)))
+        return True
+
+    monkeypatch.setattr(main.whatsapp, "send_message", fake_send)
+    client.post("/webhook", json=_wa("stats 30", ADMIN))
+    assert sent and sent[0][0] == ADMIN and "laatste 30 dagen" in sent[0][1]
+    sent.clear()
+    client.post("/webhook", json=_wa("stats", "31699999999"))   # not an admin
+    assert not any("paginaweergaven" in b for _, b in sent)

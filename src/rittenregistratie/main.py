@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
@@ -242,6 +243,14 @@ async def webhook(request: Request) -> Response:
     # Admin onboarding commands (approve/deny/pending/help).
     from .onboarding import parse_admin_command
     admin_cmd, admin_args = parse_admin_command(text or "")
+
+    # Owner statistics: site counts and the subscription funnel (analytics.py).
+    stats = re.match(r"^/?stats(?:\s+(\d{1,3}))?$", (text or "").strip().lower())
+    if is_admin and stats:
+        from .analytics import report
+        days = min(int(stats.group(1) or 7), 400) or 7
+        await _send_all(sender, report(_settings, days=days), extra_notify)
+        return Response(status_code=200, content="ok")
 
     if is_admin and admin_cmd:
         try:

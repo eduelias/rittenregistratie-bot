@@ -167,6 +167,11 @@ class Settings(BaseSettings):
         return self.data_dir / "signups.json"
 
     @property
+    def analytics_file(self) -> Path:
+        """Cookieless daily page counts (analytics.py)."""
+        return self.data_dir / "analytics.json"
+
+    @property
     def billing_enabled(self) -> bool:
         return bool(self.mollie_api_key and self.public_base_url)
 
