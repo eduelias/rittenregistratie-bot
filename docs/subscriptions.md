@@ -148,9 +148,11 @@ that never chose get `RIT_DEFAULT_LANGUAGE` (Dutch).
   goes to every driver of the car in their own language, and admin alerts
   ("New subscriber", "cancelled", failed charges) go to each admin in theirs.
 - The trip-logged WhatsApp template is tried in the driver's language first,
-  then in `RIT_WHATSAPP_TRIP_TEMPLATE_LANGUAGE`. Meta only has `trip_logged`
-  in English today; add a Dutch (`nl`) translation in WhatsApp Manager so Dutch
-  drivers get it in Dutch.
+  then in `RIT_WHATSAPP_TRIP_TEMPLATE_LANGUAGE`. `trip_logged` exists in
+  English (`en`) and Dutch (`nl`, approved 2026-11-01, id 2156109355263301):
+  "🚗 Er is een rit vastgelegd voor {{1}}. De auto reed van {{2}} naar {{3}},
+  een afstand van {{4}} km, en de rit is geregistreerd als {{5}}. De
+  kilometerstand is nu {{6}} km." Parameter 5 is `zakelijk`/`privé`.
 - Not translated on purpose: ledger contents (notes, addresses, raw messages
   are records), the website and Mollie payment descriptions (Dutch), and the
   owner statistics (`stats`, the Monday report), which are always English.
