@@ -8,6 +8,7 @@ still renders but the form is replaced by a notice, and ``/aanmelden`` is 404.
 from __future__ import annotations
 
 import html
+import json
 import logging
 import time
 from collections import deque
@@ -27,6 +28,23 @@ from .config import Settings
 log = logging.getLogger("rittenregistratie.site")
 
 SITE_DIR = Path(__file__).parent / "site"
+
+NAME = "RittenRegistratie-bot"
+DESCRIPTION = ("Houd je rittenregistratie bij via WhatsApp. Stuur je kilometerstand en bestemming, "
+               "ontvang een Excel met alle velden die de Belastingdienst vraagt. 14 dagen gratis.")
+
+# Files under site/ a browser may fetch from /static/<name>, with their media type.
+# The favicon is du7's own (as on du7.dev); the bot icon is its WhatsApp profile picture.
+STATIC = {
+    "site.css": "text/css",
+    "favicon.svg": "image/svg+xml",
+    "favicon.ico": "image/x-icon",
+    "apple-touch-icon.png": "image/png",
+    "bot-icon-96.png": "image/png",
+    "bot-icon-192.png": "image/png",
+    "bot-icon-512.png": "image/png",
+    "og-card.png": "image/png",
+}
 
 
 def _nl(value: str) -> str:
@@ -91,12 +109,63 @@ def build_router(settings: Settings, billing: Optional[Billing]) -> APIRouter:
         v.update(extra)
         return v
 
+    base = settings.public_base_url.rstrip("/")
+
+    def head_meta(title: str, path: str) -> str:
+        """Icons, theme colour and the tags link previews (WhatsApp, LinkedIn,
+        search engines) read. Absolute URLs need RIT_PUBLIC_BASE_URL."""
+        e = html.escape
+        url, card = f"{base}{path}", f"{base}/static/og-card.png"
+        tags = [
+            f'<meta name="description" content="{e(DESCRIPTION)}">',
+            '<link rel="icon" href="/favicon.ico" sizes="32x32">',
+            '<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">',
+            '<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">',
+            '<meta name="theme-color" content="#128C7E">',
+            '<meta property="og:type" content="website">',
+            f'<meta property="og:site_name" content="{NAME}">',
+            '<meta property="og:locale" content="nl_NL">',
+            f'<meta property="og:title" content="{e(title)}">',
+            f'<meta property="og:description" content="{e(DESCRIPTION)}">',
+            f'<meta property="og:image" content="{e(card)}">',
+            '<meta property="og:image:width" content="1200">',
+            '<meta property="og:image:height" content="630">',
+            f'<meta property="og:image:alt" content="{NAME}: je rittenregistratie, gewoon via WhatsApp">',
+            '<meta name="twitter:card" content="summary_large_image">',
+        ]
+        if base:
+            tags += [f'<link rel="canonical" href="{e(url)}">',
+                     f'<meta property="og:url" content="{e(url)}">']
+        return "\n".join(tags)
+
+    def json_ld() -> str:
+        """schema.org data for search engines: who sells what, for how much."""
+        org = {"@type": "Organization", "@id": f"{base}/#du7", "name": "Du7 Technology Services",
+               "url": "https://du7.dev"}
+        if settings.support_email:
+            org["email"] = settings.support_email
+        app = {
+            "@type": "SoftwareApplication", "name": NAME, "url": f"{base}/",
+            "description": DESCRIPTION, "inLanguage": "nl",
+            "applicationCategory": "BusinessApplication", "operatingSystem": "WhatsApp",
+            "image": f"{base}/static/bot-icon-512.png", "provider": {"@id": org["@id"]},
+            "offers": [
+                {"@type": "Offer", "name": "Maandelijks", "price": f"{float(settings.price_monthly):.2f}",
+                 "priceCurrency": "EUR"},
+                {"@type": "Offer", "name": "Jaarlijks", "price": f"{float(settings.price_yearly):.2f}",
+                 "priceCurrency": "EUR"},
+            ],
+        }
+        data = {"@context": "https://schema.org", "@graph": [org, app]}
+        return json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+
     def page(title: str, body: str, status: int = 200, *, robots: str = "noindex",
-             head_extra: str = "") -> HTMLResponse:
+             head_extra: str = "", path: str = "") -> HTMLResponse:
         filled = Template(body).safe_substitute(values())
         return HTMLResponse(
             Template(_read("page.html")).safe_substitute(values(
                 title=html.escape(title), body=filled, robots=robots, head_extra=head_extra,
+                head_meta=head_meta(f"{title} · {NAME}", path),
             )),
             status_code=status,
         )
@@ -111,23 +180,34 @@ def build_router(settings: Settings, billing: Optional[Billing]) -> APIRouter:
             block = '<p class="notice">We zitten op dit moment vol. Probeer het binnenkort opnieuw.</p>'
         else:
             block = Template(_read("form.html")).safe_substitute(values())
-        return HTMLResponse(Template(_read("index.html")).safe_substitute(values(signup_block=block)))
+        return HTMLResponse(Template(_read("index.html")).safe_substitute(values(
+            signup_block=block, json_ld=json_ld(),
+            head_meta=head_meta(f"{NAME}: rittenregistratie via WhatsApp", "/"),
+        )))
 
-    @router.get("/static/site.css")
-    async def css() -> FileResponse:
-        return FileResponse(SITE_DIR / "site.css", media_type="text/css")
+    @router.get("/static/{name}")
+    async def static(name: str) -> Response:
+        media = STATIC.get(name)
+        if media is None:
+            return Response(status_code=404)
+        return FileResponse(SITE_DIR / name, media_type=media,
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @router.get("/favicon.ico")
+    async def favicon() -> FileResponse:
+        return FileResponse(SITE_DIR / "favicon.ico", media_type="image/x-icon")
 
     @router.get("/voorwaarden", response_class=HTMLResponse)
     async def terms() -> HTMLResponse:
-        return page("Voorwaarden", _read("voorwaarden.html"), robots="index")
+        return page("Voorwaarden", _read("voorwaarden.html"), robots="index", path="/voorwaarden")
 
     @router.get("/privacy", response_class=HTMLResponse)
     async def privacy() -> HTMLResponse:
-        return page("Privacy", _read("privacy.html"), robots="index")
+        return page("Privacy", _read("privacy.html"), robots="index", path="/privacy")
 
     @router.get("/herroeping", response_class=HTMLResponse)
     async def withdrawal() -> HTMLResponse:
-        return page("Herroeping", _read("herroeping.html"))
+        return page("Herroeping", _read("herroeping.html"), path="/herroeping")
 
     if billing is None:
         return router

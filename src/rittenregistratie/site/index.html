@@ -4,13 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RittenRegistratie-bot: rittenregistratie via WhatsApp</title>
-<meta name="description" content="Houd je rittenregistratie bij via WhatsApp. Stuur je kilometerstand en bestemming, ontvang een Excel met alle velden die de Belastingdienst vraagt. 14 dagen gratis.">
-<link rel="stylesheet" href="/static/site.css?v=2">
+$head_meta
+<script type="application/ld+json">$json_ld</script>
+<link rel="stylesheet" href="/static/site.css?v=3">
 </head>
 <body>
 <header class="top">
   <div class="wrap bar">
-    <a class="logo" href="/">RittenRegistratie<span>-bot</span></a>
+    <a class="logo" href="/"><img src="/static/bot-icon-96.png" width="36" height="36" alt=""><span>RittenRegistratie<em>-bot</em></span></a>
     <nav><a href="#hoe">Hoe het werkt</a><a href="#prijs">Prijs</a><a href="#vragen">Vragen</a><a class="btn small" href="#aanmelden">Probeer gratis</a></nav>
   </div>
 </header>
@@ -27,6 +28,7 @@
       <p class="fine">Geen app, geen kastje in je auto. Daarna € $price_monthly_nl per maand, maandelijks opzegbaar.</p>
     </div>
     <div class="phone" aria-label="Voorbeeld van een gesprek met RittenRegistratie-bot">
+      <div class="chat-head"><img src="/static/bot-icon-96.png" width="34" height="34" alt=""><span><strong>RittenRegistratie-bot</strong><small>zakelijk account</small></span></div>
       <div class="chat">
         <p class="me">45230 Kantoor</p>
         <p class="bot">Ik heb nog geen adres voor 'Kantoor'. Stuur het adres, of deel je locatie.</p>
@@ -88,7 +90,7 @@
 </main>
 
 <footer class="wrap foot">
-  <p>RittenRegistratie-bot is een dienst van Du7 Technology Services · $company_line</p>
+  <p><a class="du7" href="https://du7.dev"><img src="/static/favicon.svg" width="18" height="18" alt="">RittenRegistratie-bot is een dienst van Du7 Technology Services</a> · $company_line</p>
   <p><a href="/voorwaarden">Voorwaarden</a> · <a href="/privacy">Privacy</a> · <a href="/herroeping">Herroeping</a> · <a href="mailto:$support_email">$support_email</a></p>
 </footer>
 </body>
