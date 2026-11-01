@@ -133,22 +133,22 @@ Mollie:
 - [ ] Mollie state on 2026-11-01: company details, stakeholders, business
       activity and bank type are done; "Open a Mollie Business Account" is
       open, and payouts are not yet available.
-- [ ] Payment methods (profile `pfl_D9ZeJ6TNr5` › Online payments), checked
-      2026-11-01: **iDEAL activated**; **Cards** and **SEPA Direct Debit** not
-      yet. Until one of them is active, `GET /v2/methods?sequenceType=first`
-      returns no methods at all, and a signup ends on the site's "Er ging
-      iets mis" page. An iDEAL first payment needs SEPA Direct Debit for the
-      mandate; a card mandates itself.
-- [ ] The profile's other websites are pauta.cc and rit.du7.dev (both
-      approved). **rrbot.nl is not listed**: add it, or replace rit.du7.dev,
-      which is no longer used.
+- [x] Payment methods on profile `pfl_D9ZeJ6TNr5` (2026-11-01): **iDEAL**
+      and **Cards** active; **SEPA Direct Debit** requested and waiting on
+      Mollie's review for live (it already works in test mode). The API
+      offers `ideal, creditcard` for first payments and `creditcard,
+      directdebit` for recurring. Checked with a test-mode signup: iDEAL
+      first payment → valid `directdebit` mandate → €49 / 12 months
+      subscription.
+- [ ] **rrbot.nl** was added to the profile's websites, status **In review**
+      (with pauta.cc and rit.du7.dev, both approved; rit.du7.dev is unused
+      and can go). Mollie's reviewer will open rrbot.nl, which does not
+      resolve yet: apply the DNS and deploy the site soon, or the review
+      may fail.
+- [ ] The profile's product description has a typo ("Belastingdiesnt").
 - [ ] Mollie's fee on each signup: the €0.01 mandate payment costs €0.32 via
       iDEAL. That's fine at this price, but it is why the mandate amount stays
       at the minimum.
-- [ ] Enable **iDEAL** on the profile. In the test run, checkout offered
-      only credit card, even though the site promises "iDEAL of creditcard".
-      Also enable SEPA Direct Debit, which is how the recurring charges after
-      an iDEAL first payment are collected.
 - [ ] Create a separate Mollie **payment profile for rrbot.nl**. The current
       profile is "Du7 Technology Services / du7.dev", and Mollie reviews the
       profile's website before live payments. Live keys are tied to a
