@@ -46,7 +46,7 @@ where = ["src"]
 
 # The website's pages and stylesheet (site.py).
 [tool.setuptools.package-data]
-rittenregistratie = ["site/*.html", "site/*.css"]
+rittenregistratie = ["site/*.html", "site/*.css", "site/*.png", "site/*.svg", "site/*.ico"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

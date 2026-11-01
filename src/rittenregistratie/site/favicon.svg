@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="du7">
+  <rect width="64" height="64" rx="14" fill="#0d1712"/>
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="none" stroke="#4ade80" stroke-opacity="0.45" stroke-width="4"/>
+  <!-- a single bold 7: the {du7} mark reduced to what stays legible at 16px -->
+  <text x="32" y="50" text-anchor="middle"
+        font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+        font-size="52" font-weight="700" fill="#4ade80">7</text>
+</svg>

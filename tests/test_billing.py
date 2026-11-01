@@ -361,3 +361,26 @@ def test_unknown_number_gets_the_signup_link(app, monkeypatch):
 def test_webhook_with_unknown_id_is_ok(app):
     # Mollie retries anything but 2xx; an id it does not know is not worth a retry.
     assert app[0].post("/billing/mollie/webhook", data={"id": "tr_nope"}).status_code == 200
+
+
+def test_icons_meta_and_structured_data(app):
+    import json as _json
+    import re
+    client = app[0]
+    for name, kind in [("bot-icon-96.png", "image/png"), ("og-card.png", "image/png"),
+                       ("favicon.svg", "image/svg+xml")]:
+        r = client.get(f"/static/{name}")
+        assert r.status_code == 200 and r.headers["content-type"].startswith(kind)
+    assert client.get("/favicon.ico").status_code == 200
+    assert client.get("/static/site.py").status_code == 404
+    assert client.get("/static/..%2Fsite.py").status_code == 404
+    page = client.get("/").text
+    assert '<meta property="og:image" content="https://rrbot.example/static/og-card.png">' in page
+    assert '<link rel="canonical" href="https://rrbot.example/">' in page
+    assert 'src="/static/bot-icon-96.png"' in page and 'href="https://du7.dev"' in page
+    ld = _json.loads(re.search(r'<script type="application/ld\+json">(.*?)</script>', page, re.S).group(1))
+    offers = ld["@graph"][1]["offers"]
+    assert [o["price"] for o in offers] == ["4.95", "49.00"]
+    terms = client.get("/voorwaarden").text
+    assert '<link rel="canonical" href="https://rrbot.example/voorwaarden">' in terms
+    assert terms.count('<meta name="description"') == 1
