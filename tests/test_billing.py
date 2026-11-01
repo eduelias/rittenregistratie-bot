@@ -519,8 +519,29 @@ def test_admin_alerts_use_the_template_until_the_admin_writes(app, monkeypatch):
 
     monkeypatch.setattr(main.whatsapp, "send_template", fake_template)
     monkeypatch.setattr(main.whatsapp, "send_message", fake_send)
-    asyncio.run(main._alert(ADMIN, "Nieuwe abonnee: X\nregel 2"))
-    assert templates[-1] == (ADMIN, "owner_alert", ["Nieuwe abonnee: X · regel 2"], "nl")
+    asyncio.run(main._alert(ADMIN, "Nieuwe abonnee: X\nregel 2", event="nieuwe abonnee",
+                            subject="31612345678"))
+    assert templates[-1] == (ADMIN, "subscriber_event",
+                             ["nieuwe abonnee", "31612345678", "Nieuwe abonnee: X · regel 2"], "nl")
     client.post("/webhook", json=_wa("ping", ADMIN))        # the admin writes: window open
     asyncio.run(main._alert(ADMIN, "Nieuwe abonnee: Y"))
     assert texts[-1] == (ADMIN, "Nieuwe abonnee: Y") and len(templates) == 1
+
+
+async def test_every_alert_has_an_event_type_for_the_template(setup):
+    import re as _re
+    from rittenregistratie.i18n import CATALOG
+    alerts = [k for k in CATALOG if k.startswith("alert.")]
+    assert alerts and all(k.replace("alert.", "event.") in CATALOG for k in alerts)
+    billing, mollie, engine, sent = setup
+    seen = []
+
+    async def alert(phone, text, **kw):
+        seen.append(kw)
+
+    billing.alert = alert
+    await billing.start(dict(FORM))
+    signup = billing.store.all()[0]
+    mollie.payments[signup.first_payment_id]["status"] = "paid"
+    await billing.sync_payment(signup.first_payment_id)
+    assert seen[-1] == {"event": "nieuwe abonnee", "subject": "31612345678"}

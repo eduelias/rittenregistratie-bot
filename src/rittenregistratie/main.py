@@ -39,19 +39,26 @@ async def _notify(phone: str, text: str) -> bool:
 _window = InboundWindow(_settings.last_inbound_file)
 
 
-async def _alert(phone: str, text: str) -> bool:
+def _one_line(text: str, limit: int) -> str:
+    """Template parameters may not hold newlines, tabs or runs of spaces."""
+    return re.sub(r"\s{2,}", " ", " · ".join(
+        part.strip() for part in str(text).splitlines() if part.strip()))[:limit] or "-"
+
+
+async def _alert(phone: str, text: str, event: str = "", subject: str = "") -> bool:
     """A message to an admin. Plain text while their 24-hour window is open;
-    else the alert template (one line, in their language, English as the
-    fallback), since a plain text would be accepted and then dropped."""
+    else the alert template in their language (English as the fallback),
+    since a plain text would be accepted and then dropped. Parameters: the
+    event type, the subscriber's number, and the alert itself as details."""
     name = (_settings.whatsapp_alert_template or "").strip()
     if not name or _window.is_open(phone):
         return await _notify(phone, text)
-    line = re.sub(r"\s{2,}", " ", " · ".join(
-        part.strip() for part in str(text).splitlines() if part.strip()))[:900]
     graph_url = f"https://graph.facebook.com/{_settings.whatsapp_graph_version}"
     for code in dict.fromkeys((_engine.languages.of(phone), "en")):
+        params = [_one_line(event or t("event.other", code), 60),
+                  _one_line(subject, 30), _one_line(text, 700)]
         if await whatsapp.send_template(
-            _settings.whatsapp_token, _settings.whatsapp_phone_number_id, phone, name, [line],
+            _settings.whatsapp_token, _settings.whatsapp_phone_number_id, phone, name, params,
             language=code, graph_url=graph_url,
         ):
             return True
@@ -471,7 +478,8 @@ async def _send_all(
     admins = set(_settings.admin_list())
     for to, body in extra:
         if to in admins:
-            await _alert(to, body)
+            await _alert(to, body, event=t("event.join_request", _engine.languages.of(to)),
+                         subject=sender)
             continue
         await whatsapp.send_message(
             _settings.whatsapp_token, _settings.whatsapp_phone_number_id,

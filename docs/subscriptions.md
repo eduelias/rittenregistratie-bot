@@ -286,9 +286,12 @@ Operations:
       it when ready.
 - [x] Admin alerts reach the admin whatever the 24-hour window: the bot
       records each number's last inbound message (`data/last-inbound.json`,
-      window.py) and sends the `owner_alert` utility template (en/nl, one
-      line) when the window is closed. Until Meta approves `owner_alert`, a
-      refused template falls back to plain text.
+      window.py) and sends the `subscriber_event` utility template (en/nl;
+      parameters: event type, subscriber number, details) when the window is
+      closed. A refused template falls back to plain text. The first version,
+      `owner_alert`, was moved to MARKETING by Meta (emoji, one generic
+      parameter, "send 'stats'"); `subscriber_event` is strictly transactional
+      and was submitted with `allow_category_change: false`.
 - [x] `POST /aanmelden` is rate-limited in the app: 5 per client IP and 60
       in total per hour (`RIT_SIGNUP_LIMIT_PER_IP`, `RIT_SIGNUP_LIMIT_TOTAL`).
 - [x] Daily backup of `data/` and `config/` (not `.env`):
