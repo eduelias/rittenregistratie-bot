@@ -83,11 +83,15 @@ def build_router(settings: Settings, billing: Optional[Billing]) -> APIRouter:
 
     @router.get("/voorwaarden", response_class=HTMLResponse)
     async def terms() -> HTMLResponse:
-        return page("Voorwaarden", _read("voorwaarden.html"))
+        return page("Voorwaarden", _read("voorwaarden.html"), robots="index")
 
     @router.get("/privacy", response_class=HTMLResponse)
     async def privacy() -> HTMLResponse:
-        return page("Privacy", _read("privacy.html"))
+        return page("Privacy", _read("privacy.html"), robots="index")
+
+    @router.get("/herroeping", response_class=HTMLResponse)
+    async def withdrawal() -> HTMLResponse:
+        return page("Herroeping", _read("herroeping.html"))
 
     if billing is None:
         return router

@@ -110,12 +110,17 @@ recurring payment failures, and removal after `access_until`.
 ## Still needed before taking real money
 
 Legal and business:
-- [ ] **KvK number and VAT number** in `RIT_COMPANY_LINE`. Prices are shown
-      incl. VAT; if du7 uses the KOR (no VAT), change "inclusief btw" and the
-      terms.
-- [ ] **Terms** (`site/voorwaarden.html`) and **privacy statement**
-      (`site/privacy.html`) are drafts marked "Concept". They need legal
-      review and the retention period, then remove the banner.
+- [x] KvK 91476003 and VAT NL004896802B29 in `RIT_COMPANY_LINE`. Mollie
+      applies 21% VAT, so "inclusief btw" stands.
+- [x] Terms (`site/voorwaarden.html`), privacy statement
+      (`site/privacy.html`) and the model withdrawal form
+      (`site/herroeping.html`) published, version 1 of 2026-11-01. Not
+      reviewed by a lawyer. They promise deletion of trip data three months
+      after a subscription ends: build that cleanup (it does not exist yet).
+- [ ] **Business address.** Dutch distance-selling law (art. 6:230m BW)
+      requires a geographic address on the site. Only KvK and VAT number are
+      shown now; add the address (or a business address service) to
+      `RIT_COMPANY_LINE`.
 - [ ] Processor agreements / sub-processors: Meta (WhatsApp), Mollie, Google
       (reverse geocoding). Add to the privacy statement and the processing
       register.

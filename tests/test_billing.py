@@ -308,6 +308,8 @@ def test_landing_page_and_legal_pages(app):
     assert "4,95" in page and "49,00" in page and 'action="/aanmelden"' in page
     assert client.get("/voorwaarden").status_code == 200
     assert client.get("/privacy").status_code == 200
+    assert "Modelformulier" in client.get("/herroeping").text
+    assert "Concept" not in client.get("/voorwaarden").text
     assert client.get("/static/site.css").headers["content-type"].startswith("text/css")
 
 
