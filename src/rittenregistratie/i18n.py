@@ -524,6 +524,22 @@ CATALOG: Dict[str, tuple] = {
     "mandate.unknown": ("onbekend", "unknown"),
     "mandate.pending": (" (wordt nog verwerkt)", " (still being processed)"),
 
+    # --- event types: the first parameter of the subscriber_event template ----------
+    "event.new": ("nieuwe abonnee", "new subscriber"),
+    "event.provision_failed": ("inrichten mislukt", "setup failed"),
+    "event.charge_failed": ("betaling mislukt", "payment failed"),
+    "event.cancelled": ("opzegging", "cancellation"),
+    "event.paused": ("pauze", "pause"),
+    "event.switch_failed": ("overstap mislukt", "plan change failed"),
+    "event.switched": ("overstap", "plan change"),
+    "event.cancelled_paused": ("opzegging", "cancellation"),
+    "event.no_mandate": ("machtiging verlopen", "mandate expired"),
+    "event.continues": ("hervatting", "restart"),
+    "event.reinstate_failed": ("hervatten mislukt", "restart failed"),
+    "event.renewed": ("hervatting", "restart"),
+    "event.join_request": ("aanmeldverzoek", "join request"),
+    "event.other": ("melding", "notice"),
+
     # --- alerts to admins (in each admin's language) ----------------------------------
     "alert.provision_failed": ("Betaalde aanmelding {id} ({phone}, {car}) kon niet worden ingericht: "
                                "{error}. Abonnement {sub} loopt.",

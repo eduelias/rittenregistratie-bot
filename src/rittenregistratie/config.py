@@ -30,9 +30,11 @@ class Settings(BaseSettings):
     # destination, km, purpose, odometer. Empty = send plain text.
     whatsapp_trip_template: str = ""
     whatsapp_trip_template_language: str = "en"
-    # Utility template (one body parameter) for alerts to admins whose 24-hour
-    # window is closed, in en and nl. Empty = always plain text.
-    whatsapp_alert_template: str = "owner_alert"
+    # Utility template for alerts to admins whose 24-hour window is closed, in
+    # en and nl. Three body parameters: event type, subscriber number, details.
+    # Strictly transactional (no emoji, no call to action) so Meta keeps it
+    # UTILITY. Empty = always plain text.
+    whatsapp_alert_template: str = "subscriber_event"
     # Authentication template (copy-code button) for the website's cancel
     # button: the code that proves the visitor holds the number.
     whatsapp_code_template: str = "cancel_code"

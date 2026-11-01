@@ -265,7 +265,8 @@ class Billing:
         self.mollie = mollie
         self.notify = notify
         # Messages to admins: may need a template when their window is closed.
-        self.alert = alert or notify
+        # Called as alert(phone, text, event=<label>, subject=<subscriber number>).
+        self.alert = alert or (lambda phone, text, **_: notify(phone, text))
         self.store = SignupStore(settings.signups_file)
         self._lock = asyncio.Lock()
         # phone -> (expiry on the monotonic clock, the menu's (action, plan)s).
@@ -909,7 +910,10 @@ class Billing:
         """An alert to every admin, each in their own language."""
         for admin in self.settings.admin_list():
             try:
-                await self.alert(admin, render_parts([(key, kw)], self._lang(admin)))
+                lang = self._lang(admin)
+                await self.alert(admin, render_parts([(key, kw)], lang),
+                                 event=t(key.replace("alert.", "event."), lang),
+                                 subject=str(kw.get("phone", "")))
             except Exception:  # pragma: no cover - a notification must not break billing
                 log.exception("admin notification failed")
 
