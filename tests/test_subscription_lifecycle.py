@@ -1,5 +1,8 @@
 """Subscriber self-service over WhatsApp: status menu, cancel, pause, resume,
 restart after the end, plan switch. Builds on the fakes in test_billing."""
+
+# These tests check the Dutch customer texts (the default language).
+BOT_LANGUAGE = "nl"
 from datetime import date, timedelta
 
 import pytest
