@@ -290,8 +290,8 @@ Mollie:
       `.env`, restart.
 
 Operations:
-- [ ] `RIT_MAX_USERS` is 5, including the owner's car, so 4 subscribers. Raise
-      it when ready.
+- [x] `RIT_MAX_USERS` is 25 since 2026-11-02 (the owner's car included, so
+      24 subscribers). Raise it when the launch goes well.
 - [x] Admin alerts reach the admin whatever the 24-hour window: the bot
       records each number's last inbound message (`data/last-inbound.json`,
       window.py) and sends the `subscriber_event` utility template (en/nl;
