@@ -30,6 +30,9 @@ class RawTrip:
     is_private: bool
     note: str = ""
     raw_message: str = ""   # the original message text, verbatim
+    # Phone that reported the trip. Empty for trips the car logged itself and
+    # for lines written before this field existed (who drove is not known).
+    sender: str = ""
 
 
 class RawLedger:

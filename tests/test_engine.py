@@ -372,3 +372,25 @@ def test_repeating_the_last_reading_and_place_still_says_where(settings):
     eng.handle_text("145040 Office", "31612345678", now=datetime(2026, 1, 5, 9, 0))
     reply = eng.handle_text("145040 Office", "31612345678", now=datetime(2026, 1, 5, 9, 5))
     assert "already logged" in reply.lower() and "Office" in reply
+
+
+def test_ledger_records_who_sent_the_trip(settings):
+    """The sender is stored per trip (source of the export's Bestuurder). For a
+    trip that waited for an address, it is whoever sent the reading."""
+    from rittenregistratie.raw_ledger import RawLedger
+    settings.cars_file.write_text(
+        "default_car:\n"
+        "  label: 'Test car'\n"
+        "  seed_address: Home\n"
+        "  seed_odometer: 145000\n"
+        "  phones: ['31612345678', '31687654321']\n"
+        "  drivers: {'31687654321': 'Sam'}\n"
+    )
+    eng = Engine(settings)
+    eng.handle_text("145040 Office", "+31 6 1234 5678", now=datetime(2026, 1, 5, 9, 0))
+    eng.handle_text("145060 Gym", "31687654321", now=datetime(2026, 1, 5, 18, 0))
+    eng.handle_text("Sportlaan 1, Utrecht", "31612345678", now=datetime(2026, 1, 5, 18, 1))
+    ledger = RawLedger(settings.raw_ledger_file("default_car")).read_all()
+    assert [t.sender for t in ledger] == ["31612345678", "31687654321"]
+    rows = _rows(eng)
+    assert [r[8:] for r in rows[1:]] == [(1, "31612345678"), (2, "Sam")]

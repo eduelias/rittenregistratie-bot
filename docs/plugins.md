@@ -68,7 +68,8 @@ def on_post_generate(payload):
 Each trip dict has the ledger fields: `timestamp` (ISO-8601), `start_odo`,
 `end_odo` (int), `start_address`, `end_address`, `is_private` (bool), and
 optionally `route`, `private_detour_km`, `note`, `destination_raw`,
-`raw_message`. The core validates the returned list (types, `end >= start`,
+`raw_message`, `sender` (the reporting phone, source of the Bestuurder column;
+empty for older and vehicle-logged trips). The core validates the returned list (types, `end >= start`,
 sorted by time, non-decreasing odometer chain) and aborts the export with an
 error to the user if it fails. The raw ledger is never modified by an export.
 

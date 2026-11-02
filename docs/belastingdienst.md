@@ -8,7 +8,7 @@ rittenregistratie** (watertight trip log).
 Per the official
 [rittenregistratie requirements](https://www.belastingdienst.nl/wps/wcm/connect/bldcontentnl/belastingdienst/zakelijk/winst/inkomstenbelasting/inkomstenbelasting_voor_ondernemers/privegebruik_auto/rittenregistratie),
 each trip (**per rit**) must contain exactly these fields — the generated Excel
-has one column per field and nothing else:
+has one column per field:
 
 | Excel column | Official field |
 |---|---|
@@ -24,10 +24,21 @@ has one column per field and nothing else:
 Note: a there-and-back visit counts as **2 trips** (heenreis + terugreis), each
 its own row.
 
-For employees and DGAs with a company car, the employer manual (Handboek
-Loonheffingen 2026, §23.3.18) also asks for a **trip number per day** and, when
-several people drive the car, **who drove**. The bot's export does not have
-these columns yet; the free template on rrbot.nl/rittenregistratie-excel does.
+For employees and DGAs with a company car, the employer manual
+([Handboek Loonheffingen 2026](https://download.belastingdienst.nl/belastingdienst/docs/handboek-loonheffingen-lh0221t62fd.pdf),
+§23.3.18) also asks for a **trip number per day** and, when several people
+drive the car, **who drove**. The export ends with these two columns, the same
+as the free template on rrbot.nl/rittenregistratie-excel:
+
+| Excel column | Filled with |
+|---|---|
+| Ritnummer | 1, 2, 3 … per date, in the order the trips were logged |
+| Bestuurder | only when the car has more than one phone in `cars.yaml`: the name from that car's `drivers:` map, else the phone number that reported the trip |
+
+Bestuurder comes from the ledger's `sender` field, recorded since this column
+was added. Trips logged before that, and trips the car logged itself (vehicle
+telemetry), have no sender, so their Bestuurder stays empty rather than being
+guessed. A car with one phone never fills it.
 
 The public guide rrbot.nl/rittenregistratie-eisen
 (`src/rittenregistratie/site/rittenregistratie-eisen.html`) summarises the rules

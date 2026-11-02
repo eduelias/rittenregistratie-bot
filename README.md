@@ -258,13 +258,17 @@ spg: { address: "Waldorpstraat 3, 2521 CA Den Haag", lat: 52.0781, lon: 4.3168 }
 
 ## Excel schema (exactly the Belastingdienst per-trip fields)
 
-Each trip is one row with exactly the fields the Belastingdienst requires —
-nothing more, nothing less:
+Each trip is one row with exactly the fields the Belastingdienst requires,
+plus the two the employer manual asks of employees and DGAs:
 
 ```
 Datum | Beginstand | Eindstand | Vertrekadres | Aankomstadres |
-Route | Privé/zakelijk | Privé-omrijkilometers
+Route | Privé/zakelijk | Privé-omrijkilometers | Ritnummer | Bestuurder
 ```
+
+- **Ritnummer** numbers each day's trips 1, 2, 3 …
+- **Bestuurder** is filled only for a car with several phones: who reported the
+  trip (`drivers:` name in `cars.yaml`, else the number).
 
 - **Route** is filled *only* when the driven route is not the most usual one
   (empty otherwise), as the rules specify.

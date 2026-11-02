@@ -1,7 +1,7 @@
-"""Per-year Excel writer — strictly the Belastingdienst per-trip fields.
+"""Per-year Excel writer — the Belastingdienst per-trip fields.
 
-Per the official rittenregistratie requirements, each trip row contains exactly
-these fields (and nothing else):
+Per the official rittenregistratie requirements, each trip row contains these
+fields:
 
 - Datum — date
 - Beginstand — begin odometer
@@ -13,10 +13,17 @@ these fields (and nothing else):
 - Privé-omrijkilometers — private detour km when a trip mixes business and
   private kilometres
 
+followed by the two the employer manual (Handboek Loonheffingen 2026, §23.3.18)
+adds for employees and DGAs with a company car:
+
+- Ritnummer — the trip's number on its day (1, 2, 3 ...)
+- Bestuurder — who drove, only filled when several people drive the car
+
 No other per-trip columns are added.
 """
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 from typing import List
 
@@ -24,6 +31,14 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
 from .models import Trip, TripType
+
+# Extra columns for employees and DGAs: the employer manual (Handboek Loonheffingen,
+# 23.3.18) also asks for a trip number per day and, with more drivers, who drove.
+# Explanation per column, shown on the template's "Uitleg" sheet.
+TEMPLATE_EXTRA = {
+    "Ritnummer": "Voor werknemers en dga's: het volgnummer van de rit op die dag (1, 2, 3 ...).",
+    "Bestuurder": "Voor werknemers en dga's, als meer mensen in de auto rijden: wie de rit reed.",
+}
 
 HEADERS: List[str] = [
     "Datum",
@@ -34,6 +49,7 @@ HEADERS: List[str] = [
     "Route",
     "Privé/zakelijk",
     "Privé-omrijkilometers",
+    *TEMPLATE_EXTRA,
 ]
 
 
@@ -63,7 +79,8 @@ class ExcelWriter:
         return wb, ws, path
 
     @staticmethod
-    def _row(trip: Trip) -> list:
+    def _row(trip: Trip, number: int) -> list:
+        """``number`` is the trip's Ritnummer: its place among that day's trips."""
         return [
             trip.date.strftime("%Y-%m-%d"),
             trip.start_odo,
@@ -73,10 +90,13 @@ class ExcelWriter:
             trip.route,  # only populated when the usual route was not taken
             _pb(trip.trip_type),
             trip.private_detour_km or "",
+            number,
+            trip.driver,
         ]
 
     def write_all(self, year: int, trips: List[Trip]) -> Path:
-        """Write a fresh workbook for ``year`` holding exactly ``trips``.
+        """Write a fresh workbook for ``year`` holding exactly ``trips``, in
+        the given order (which numbers each day's trips).
 
         Replaces any existing file for that year. Used by on-demand export.
         """
@@ -85,15 +105,19 @@ class ExcelWriter:
         ws = wb.active
         ws.title = "Ritten"
         ws.append(HEADERS)
+        per_day: Counter = Counter()
         for trip in trips:
-            ws.append(self._row(trip))
+            per_day[trip.date.date()] += 1
+            ws.append(self._row(trip, per_day[trip.date.date()]))
         wb.save(path)
         return path
 
     def append_trip(self, trip: Trip) -> Path:
         year = trip.date.year
         wb, ws, path = self._open(year)
-        ws.append(self._row(trip))
+        day = trip.date.strftime("%Y-%m-%d")
+        number = 1 + sum(1 for (d,) in ws.iter_rows(min_row=2, max_col=1, values_only=True) if d == day)
+        ws.append(self._row(trip, number))
         wb.save(path)
         return path
 
@@ -113,18 +137,12 @@ COLUMN_HELP = {
                              "hoeveel kilometer die omweg was.",
 }
 
-# Extra columns on the template only: the employer manual (Handboek Loonheffingen,
-# 23.3.18) also asks employees for a trip number per day and, with more drivers, who drove.
-TEMPLATE_EXTRA = {
-    "Ritnummer": "Voor werknemers en dga's: het volgnummer van de rit op die dag (1, 2, 3 ...).",
-    "Bestuurder": "Voor werknemers en dga's, als meer mensen in de auto rijden: wie de rit reed.",
-}
 TEMPLATE_ROWS = 1000
 
 
 def template_workbook(site_url: str = "https://rrbot.nl/") -> Workbook:
     """An empty rittenregistratie for people who keep it by hand: the same
-    columns as the bot's export (plus TEMPLATE_EXTRA), an overview sheet that adds up the
+    columns as the bot's export, an overview sheet that adds up the
     private kilometres and finds gaps in the odometer chain. Served by
     site.py as a free download."""
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -134,7 +152,7 @@ def template_workbook(site_url: str = "https://rrbot.nl/") -> Workbook:
     wb = Workbook()
     ws = wb.active
     ws.title = "Ritten"
-    ws.append(HEADERS + list(TEMPLATE_EXTRA))
+    ws.append(HEADERS)
     for cell in ws[1]:
         cell.font, cell.fill = bold, head
     ws.freeze_panes = "A2"
