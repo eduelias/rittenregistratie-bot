@@ -214,11 +214,13 @@ def report(settings: Settings, days: int = 7, today: Optional[date] = None) -> s
     f = funnel(SignupStore(settings.signups_file).all(), settings, start, today, today)
     views = t["views"]
     home = views.get("/", 0)
+    english = sum(v for p, v in views.items() if p == "/en" or p.startswith("/en/"))
     lines = [
         f"RittenRegistratie-bot, last {days} days ({start:%d %b} to {today:%d %b})",
         "",
         f"Site: {sum(views.values())} page views, {home} on the homepage"
         + (f" (+{t['bots']} bots)" if t["bots"] else ""),
+        f"English site: {english} page views, {views.get('/en/', 0)} on its homepage",
         f"Referrers: {_top(t['referrers'])}",
     ]
     if t["sources"] or t["campaigns"]:

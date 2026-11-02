@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>$title</title>
+$head_meta
+<script type="application/ld+json">$json_ld</script>
+<link rel="stylesheet" href="/static/site.css?v=9">
+</head>
+<body>
+<header class="top">
+  <div class="wrap bar">
+    <a class="logo" href="/en/"><img src="/static/bot-icon-96.png" width="36" height="36" alt=""><span>RittenRegistratie<em>-bot</em></span></a>
+    <nav><a href="#how">How it works</a><a href="#price">Price</a><a href="#faq">FAQ</a>$switch<a class="btn small" href="#signup">Try it free</a></nav>
+  </div>
+</header>
+
+<main>
+<section class="hero">
+  <div class="wrap two">
+    <div>
+      <h1>Your Dutch mileage log, kept in WhatsApp. In English.</h1>
+      <p class="lead">Drive a company or lease car and use it privately for no more than 500 km a year?
+      Then you can avoid the bijtelling, if you can prove it. The usual proof is a trip log
+      (rittenregistratie).
+      After every trip, send the bot your odometer reading and destination. It explains everything in
+      English, and your Excel has the Dutch fields the Belastingdienst asks for, trip by trip.</p>
+      <p><a class="btn" href="#signup">Try it free for 14 days</a></p>
+      <p class="fine">No app, no tracker in your car. After the trial € $price_monthly_en a month, cancel any month.</p>
+    </div>
+    <div class="phone" aria-label="Example of a chat with RittenRegistratie-bot">
+      <div class="chat-head"><img src="/static/bot-icon-96.png" width="34" height="34" alt=""><span><strong>RittenRegistratie-bot</strong><small>business account</small></span></div>
+      <div class="chat">
+        <p class="me">45230 Office</p>
+        <p class="bot">I don't have an address for 'Office'. Send the address, or share your location.</p>
+        <p class="me">Stationsplein 1, Utrecht</p>
+        <p class="bot">Home → Office (38 km, business). Odometer 45230.</p>
+        <p class="me">45268 Home private</p>
+        <p class="bot">👍</p>
+        <p class="me">excel</p>
+        <p class="bot doc">📄 ritten-2026.xlsx</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how" class="wrap">
+  <h2>How it works</h2>
+  <ol class="steps">
+    <li><strong>Sign up</strong><span>Fill in your details and current odometer reading below, and set up a payment mandate with iDEAL or a credit card (€ $mandate_en). Your number works straight away.</span></li>
+    <li><strong>Message after every trip</strong><span>Odometer reading and destination, for example <code>45230 Office</code>. A private trip? Add <code>private</code>. The bot asks for a new address once.</span></li>
+    <li><strong>Excel whenever you want</strong><span>Send <code>excel</code> and you get this year's log as a file in WhatsApp. Another year: <code>excel 2025</code>.</span></li>
+  </ol>
+</section>
+
+<section class="wrap">
+  <h2>Who it's for</h2>
+  <p>Mainly for employees with a company or lease car who want to show they drive no more than 500 km
+  privately a year. That record backs up your Verklaring geen privégebruik auto, the statement that saves
+  you the bijtelling (the taxable benefit for private use). Also for self-employed people (zzp'ers) and
+  business owners with a car or van of the business, and for anyone who drives for work in their own car
+  and wants to track their business kilometres. If you keep a trip log in a Dutch spreadsheet now, you
+  can send one WhatsApp message per trip instead.</p>
+  <p>Not sure what the rules are? Read <a href="/en/rittenregistratie-requirements">what a Dutch trip log
+  must contain</a>, in English, with a source for every rule.</p>
+</section>
+
+<section class="wrap">
+  <h2>What you get</h2>
+  <div class="grid">
+    <div class="card"><h3>Every required field</h3><p>Per trip: date, start and end reading, departure and arrival address, private or business, and the route when it's not your usual one.</p></div>
+    <div class="card"><h3>English chat, Dutch paperwork</h3><p>The bot talks to you in English. The Excel uses the Dutch column names (Datum, Beginstand, Eindstand, ...) that your employer and the Belastingdienst expect.</p></div>
+    <div class="card"><h3>Nothing changed afterwards</h3><p>Every trip is recorded once, as you sent it. Corrections are added as a new line; the Excel is always rebuilt from that record.</p></div>
+    <div class="card"><h3>Private kilometres in view</h3><p>The bot counts your private kilometres per year and warns you as you get close to 500 km.</p></div>
+  </div>
+  <p class="fine">RittenRegistratie-bot records what you send it. It isn't tax advice and doesn't guarantee
+  that the Belastingdienst accepts your records; you stay responsible for them being correct.</p>
+</section>
+
+<section id="price" class="wrap">
+  <h2>Price</h2>
+  <div class="plans">
+    <div class="plan"><h3>Monthly</h3><p class="price">€ $price_monthly_en<small> /month</small></p><ul><li>14 days free</li><li>Cancel any month</li><li>1 car, 1 WhatsApp number</li></ul></div>
+    <div class="plan best"><h3>Yearly</h3><p class="price">€ $price_yearly_en<small> /year</small></p><ul><li>14 days free</li><li>Two months cheaper</li><li>1 car, 1 WhatsApp number</li></ul></div>
+  </div>
+  <p class="fine">Prices include 21% Dutch VAT. The first payment of € $mandate_en only sets up the
+  mandate; your first real payment is after the trial. Cancel within 14 days and you pay nothing more.
+  After every payment you get a VAT invoice in WhatsApp (in Dutch), in your company's name if you like.</p>
+</section>
+
+<section id="signup" class="wrap signup">
+  <h2>Sign up</h2>
+  $signup_block
+</section>
+
+<section id="faq" class="wrap faq">
+  <h2>Questions</h2>
+  <details><summary>Why do I pay € $mandate_en first?</summary><p>That payment, by iDEAL or credit card, gives the mandate that lets the subscription be charged automatically after the trial. Your bank shows it as a payment to Du7 Technology Services via Mollie.</p></details>
+  <details><summary>Is the Excel in English?</summary><p>The column names are the Dutch ones, because the Belastingdienst and Dutch employers work with those terms. Your addresses and notes stay exactly as you sent them. The bot's messages, help and menus are in English.</p></details>
+  <details><summary>Can I use a foreign phone number?</summary><p>Yes, any number that has WhatsApp. Enter it with the country code, for example +44 7700 900123.</p></details>
+  <details><summary>How do I cancel?</summary><p>Send <code>unsubscribe</code> to the bot, use the <a href="/opzeggen" hreflang="nl">cancel page</a> (in Dutch, linked at the bottom of every page), or email us. Nothing is charged after that, and the bot keeps working until the end of your paid period (or trial). Send <code>excel all</code> before then to keep all your trips.</p></details>
+  <details><summary>Do I need an app or a device?</summary><p>No. Just WhatsApp on the number you sign up with.</p></details>
+  <details><summary>What happens to my data?</summary><p>Your trips are stored on our own server in the Netherlands and only used to make your trip log. Messages go through WhatsApp (Meta), payments through Mollie. See the <a href="/en/privacy">privacy statement</a>.</p></details>
+  <details><summary>I have more cars or several drivers.</summary><p>The bot can do that, but it isn't in the online signup yet. Email us and we'll set it up.</p></details>
+</section>
+</main>
+
+<footer class="wrap foot">
+  <p><a class="du7" href="https://du7.dev"><img src="/static/favicon.svg" width="18" height="18" alt="">RittenRegistratie-bot is a service of Du7 Technology Services</a> · $company_line_en</p>
+  <p><a href="/en/rittenregistratie-requirements">Dutch trip log rules</a> · <a href="/en/terms">Terms</a> · <a href="/en/privacy">Privacy</a> · <a href="/herroeping" hreflang="nl">Withdrawal form (Dutch)</a> · <a href="/opzeggen" hreflang="nl">Cancel subscription (Dutch)</a> · <a href="/" hreflang="nl" lang="nl">Nederlands</a> · <a href="mailto:$support_email">$support_email</a></p>
+</footer>
+</body>
+</html>
