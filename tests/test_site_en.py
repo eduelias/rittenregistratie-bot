@@ -10,6 +10,8 @@ from test_billing import FORM, app  # noqa: F401  (fixture)
 from test_site_seo import UA, client  # noqa: F401  (fixture)
 
 BASE = "https://rrbot.example"
+# The indexed pairs; the cancel pages (also a pair) are noindex and need billing.
+INDEXED = {nl: en for nl, en in PAIRS.items() if nl != "/opzeggen"}
 
 
 def _links(html):
@@ -46,7 +48,7 @@ def test_dutch_pages_point_to_english(client):
     assert not _links(excel) and 'class="lang" href="/en/"' in excel
 
 
-@pytest.mark.parametrize("nl,en", list(PAIRS.items()))
+@pytest.mark.parametrize("nl,en", list(INDEXED.items()))
 def test_every_pair_links_both_ways(client, nl, en):
     c = client[0]
     expected = {"nl": BASE + nl, "en": BASE + en, "x-default": BASE + nl}
@@ -75,7 +77,8 @@ def test_sitemap_lists_both_languages_with_alternates(client):
     xml = client[0].get("/sitemap.xml").text
     assert 'xmlns:xhtml="http://www.w3.org/1999/xhtml"' in xml
     locs = re.findall(r"<loc>(.*?)</loc>", xml)
-    for nl, en in PAIRS.items():
+    assert not any("cancel" in loc or "opzeggen" in loc for loc in locs)
+    for nl, en in INDEXED.items():
         assert BASE + nl in locs and BASE + en in locs
     entry = re.search(rf"<url><loc>{re.escape(BASE)}/en/terms</loc>(.*?)</url>", xml).group(1)
     assert f'hreflang="nl" href="{BASE}/voorwaarden"' in entry
@@ -126,3 +129,41 @@ def test_dutch_signup_is_unchanged(app):
     client.post("/billing/mollie/webhook", data={"id": signup.first_payment_id})
     assert main._engine.languages.get(signup.phone) is None   # the default (Dutch)
     assert "Welkom, Anna!" in client.get(f"/aanmelden/klaar?id={signup.id}").text
+
+
+def test_english_cancel_button(app, monkeypatch):
+    from test_billing import _activate_over_http
+    client, main, fake = app
+    _activate_over_http(client, main, fake)
+    codes = []
+
+    async def fake_code(token, pid, to, name, code, language="en", graph_url=""):
+        codes.append(code)
+        return True
+
+    async def fake_template(*a, **kw):
+        return True
+
+    monkeypatch.setattr(main.whatsapp, "send_auth_code", fake_code)
+    monkeypatch.setattr(main.whatsapp, "send_template", fake_template)
+    assert 'href="/en/cancel"' in client.get("/en/").text
+    start = client.get("/en/cancel").text
+    assert 'action="/en/cancel"' in start and '<html lang="en">' in start
+    assert 'class="lang" href="/opzeggen"' in start and 'content="noindex"' in start
+    page = client.post("/en/cancel", data={"phone": "06 1234 5678"}).text
+    assert "6-digit code" in page and 'action="/en/cancel/confirm"' in page
+    bad = client.post("/en/cancel/confirm", data={"phone": "31612345678", "code": "x"})
+    assert bad.status_code == 400 and "wrong or has expired" in bad.text
+    ok = client.post("/en/cancel/confirm", data={"phone": "31612345678", "code": codes[-1]})
+    assert ok.status_code == 200 and "Your subscription is cancelled" in ok.text
+    assert any(c[0] == "cancel" for c in fake.calls)
+
+
+def test_terms_v3(client):
+    c = client[0]
+    for path in ("/voorwaarden", "/en/terms"):
+        page = c.get(path).text
+        assert "ec.europa.eu/consumers/odr" not in page and "90 " in page
+        assert "drie maanden" not in page and "three more months" not in page
+    assert "Versie 3" in c.get("/voorwaarden").text and "Version 3" in c.get("/en/terms").text
+    assert "binnen 14 dagen terug" in c.get("/voorwaarden").text
