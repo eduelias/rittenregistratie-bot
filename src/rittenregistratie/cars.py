@@ -9,6 +9,7 @@ own plugins. ``cars.yaml``::
       seed_address: "Home"
       seed_odometer: 18811
       phones: ["31612345678", "31698765432"]   # both report for this car
+      drivers: {"31698765432": "Sam"}   # optional; Bestuurder in the export
       event_plugins: ["reallocate"]   # optional; default: RIT_EVENT_PLUGINS
       cap_plugin: "warn"              # optional; default: RIT_PRIVATE_CAP_PLUGIN
     golf_2:
@@ -63,6 +64,17 @@ class Car:
     # Signup id when the car belongs to a paying subscriber. Such a car only
     # gets the plugins RIT_SUBSCRIBER_* allow, and its own location book.
     subscription: Optional[str] = None
+    # Optional phone -> name, shown as Bestuurder in the export.
+    drivers: Dict[str, str] = field(default_factory=dict)
+
+    def driver(self, phone: str) -> str:
+        """Who drove, for the export's Bestuurder column: the name from
+        ``drivers`` or the number. Empty when only one phone drives the car
+        (nothing to tell apart) or when the trip has no sender."""
+        phone = normalize_phone(phone)
+        if not phone or len(set(self.phones)) < 2:
+            return ""
+        return self.drivers.get(phone, phone)
 
     @property
     def is_subscriber(self) -> bool:
@@ -90,6 +102,9 @@ class CarRegistry:
                 event_plugins=_plugin_list(val.get("event_plugins")),
                 cap_plugin=(str(val["cap_plugin"]).strip() or None) if val.get("cap_plugin") else None,
                 subscription=str(val["subscription"]) if val.get("subscription") else None,
+                drivers={normalize_phone(str(p)): str(n).strip()
+                         for p, n in (val.get("drivers") or {}).items()
+                         if normalize_phone(str(p)) and str(n).strip()},
             )
             self._cars[car_id] = car
             for phone in dict.fromkeys(car.phones):  # de-duplicate, keep order

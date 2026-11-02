@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
+from .cars import Car, CarRegistry
 from .config import Settings
 from .config import load_yaml as load_yaml_file
 from .events import EXPORT_POST_GENERATE, EXPORT_PRE_GENERATE, EventBus
@@ -44,8 +45,11 @@ class ExportResult:
     handlers: int  # number of pre_generate handlers that ran
 
 
-def raw_to_trip(row: Dict[str, Any]) -> Trip:
-    """Turn a (validated) ledger-shaped dict into a Trip for the Excel writer."""
+def raw_to_trip(row: Dict[str, Any], car: Optional[Car] = None) -> Trip:
+    """Turn a (validated) ledger-shaped dict into a Trip for the Excel writer.
+
+    ``car`` names the driver (Bestuurder) from the row's ``sender`` when
+    several phones drive it; rows without a sender get no driver."""
     return Trip(
         date=datetime.fromisoformat(str(row["timestamp"])),
         trip_type=TripType.PRIVATE if row["is_private"] else TripType.BUSINESS,
@@ -56,6 +60,7 @@ def raw_to_trip(row: Dict[str, Any]) -> Trip:
         route=str(row.get("route") or ""),
         private_detour_km=int(row.get("private_detour_km") or 0),
         source=TripSource.WHATSAPP,
+        driver=car.driver(str(row.get("sender") or "")) if car is not None else "",
     )
 
 
@@ -161,7 +166,9 @@ class ExportService:
 
         out_dir = out_dir or self.settings.exports_dir
         out_dir.mkdir(parents=True, exist_ok=True)
-        path = ExcelWriter(out_dir, car_id).write_all(year, [raw_to_trip(r) for r in rows])
+        # cars.yaml is read now, not at startup: admin commands change phones.
+        car = CarRegistry(load_yaml_file(self.settings.cars_file)).get(car_id)
+        path = ExcelWriter(out_dir, car_id).write_all(year, [raw_to_trip(r, car) for r in rows])
 
         bus.emit(EXPORT_POST_GENERATE, {
             "car_id": car_id, "year": year, "path": str(path), "rows": len(rows),
@@ -206,7 +213,6 @@ def main(argv=None) -> int:
         kw["config_dir"] = args.config_dir
     settings = Settings(**kw)
 
-    from .cars import CarRegistry
     registry = CarRegistry(load_yaml_file(settings.cars_file))
 
     def bus_for(car_id: str) -> EventBus:

@@ -61,6 +61,7 @@ class Trip:
     route: str = ""
     private_detour_km: int = 0
     source: TripSource = TripSource.WHATSAPP
+    driver: str = ""  # who drove, only when several people drive the car
 
     @property
     def trip_km(self) -> int:

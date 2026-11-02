@@ -98,7 +98,9 @@ def test_excel_template_download(client):
     assert 'filename="rittenregistratie-sjabloon.xlsx"' in r.headers["content-disposition"]
     wb = load_workbook(io.BytesIO(r.content))
     assert wb.sheetnames == ["Ritten", "Overzicht", "Uitleg"]
-    assert [cell.value for cell in wb["Ritten"][1]] == HEADERS + ["Ritnummer", "Bestuurder"]
+    # Same columns as the bot's export, Ritnummer and Bestuurder last.
+    assert [cell.value for cell in wb["Ritten"][1]] == HEADERS
+    assert HEADERS[-2:] == ["Ritnummer", "Bestuurder"]
     assert {row[0].value for row in wb["Uitleg"].iter_rows(min_row=2)} >= set(HEADERS)
     assert "https://rrbot.example/rittenregistratie-eisen" in [
         row[1].value for row in wb["Uitleg"].iter_rows(min_row=2)]

@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .cars import ActiveCarStore, Car, CarRegistry
+from .cars import ActiveCarStore, Car, CarRegistry, normalize_phone
 from .config import Settings, load_yaml, save_location
 from .events import EventBus, load_event_plugins
 from .i18n import Key, LanguageStore, render_parts, set_default, t
@@ -597,6 +597,7 @@ class Engine:
                 "is_private": parsed.is_private,
                 "note": parsed.note,
                 "raw": parsed.raw,
+                "sender": normalize_phone(sender),
             }
             store.save(state)
             return Reply(t("trip.ask_address", destination=parsed.destination))
@@ -608,6 +609,7 @@ class Engine:
             is_private=parsed.is_private,
             note=parsed.note,
             raw_message=parsed.raw,
+            sender=sender,
         )
 
     def handle_location(
@@ -628,7 +630,7 @@ class Engine:
         )
         if not resolved:
             resolved = f"{latitude},{longitude}"
-        return self._save_location_and_commit(car, store, state, now, resolved)
+        return self._save_location_and_commit(car, store, state, now, resolved, sender)
 
     def _resolve_pending_with_text(
         self, car: Car, store: StateStore, state: State, text: str,
@@ -673,11 +675,11 @@ class Engine:
             return Reply(t("addr.invalid"))
         else:
             address = answer
-        return self._save_location_and_commit(car, store, state, now, address)
+        return self._save_location_and_commit(car, store, state, now, address, sender)
 
     def _save_location_and_commit(
         self, car: Car, store: StateStore, state: State,
-        now: datetime, address: str,
+        now: datetime, address: str, sender: str = "",
     ) -> str:
         pending = state.pending or {}
         destination = pending.get("destination", "")
@@ -694,12 +696,15 @@ class Engine:
             learned=address,
             note=pending.get("note", ""),
             raw_message=pending.get("raw", ""),
+            # Whoever sent the reading drove, not whoever supplied the address.
+            sender=pending.get("sender") or sender,
         )
 
     def _commit_trip(
         self, car: Car, store: StateStore, state: State, now: datetime,
         *, end_odo: int, destination: str, is_private: bool,
         learned: str = "", note: str = "", raw_message: str = "",
+        sender: str = "",
     ) -> str:
         origin_name = state.last_address or car.seed_address
         start_odo = state.last_odometer
@@ -753,6 +758,7 @@ class Engine:
             is_private=is_private,
             note=note,
             raw_message=raw_message,
+            sender=normalize_phone(sender),
         ))
 
         state.last_odometer = end_odo
