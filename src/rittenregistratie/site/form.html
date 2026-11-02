@@ -5,6 +5,11 @@
     <label>Naam van je auto<input name="car_label" required placeholder="bijv. Golf of 12-ABC-3"></label>
     <label>Huidige kilometerstand<input name="seed_odometer" inputmode="numeric" pattern="[0-9 .]*" required placeholder="45192"></label>
     <label>Adres waar je eerste rit begint<input name="seed_address" required placeholder="Dorpsstraat 1, Utrecht" autocomplete="street-address"></label>
+    <details class="optional"><summary>Factuur op naam van je bedrijf? (optioneel)</summary>
+      <label>Bedrijfsnaam<input name="company" maxlength="100" autocomplete="organization"></label>
+      <label>Factuuradres<input name="billing_address" maxlength="200" placeholder="Straat 1, 1234 AB Plaats" autocomplete="street-address"></label>
+      <p class="fine">Je krijgt na elke betaling een factuur met btw in WhatsApp. Later wijzigen kan met 'factuurgegevens'.</p>
+    </details>
     <fieldset><legend>Abonnement</legend>
       <label class="radio"><input type="radio" name="plan" value="monthly" checked> Maandelijks, € $price_monthly_nl</label>
       <label class="radio"><input type="radio" name="plan" value="yearly"> Jaarlijks, € $price_yearly_nl</label>

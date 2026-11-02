@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # Utility template confirming a cancellation made on the website (one
     # parameter: the last day of access), for when the window is closed.
     whatsapp_cancel_template: str = "subscription_cancelled"
+    # Utility template telling a subscriber outside the 24-hour window that an
+    # invoice is ready (they reply 'factuur' to get the PDF). Parameters: the
+    # amount, the invoice number.
+    whatsapp_invoice_template: str = "invoice_ready"
     allowed_sender: str = ""  # E.164 without '+', e.g. 31612345678
     # Admin numbers (comma-separated, E.164 without '+') who can approve joins.
     admin_numbers: str = ""
@@ -117,6 +121,9 @@ class Settings(BaseSettings):
     # Shown in the website footer and legal pages.
     support_email: str = ""
     company_line: str = "KvK [nummer] · btw [nummer]"
+    # The supplier's name on invoices (invoices.py); address, KvK and VAT
+    # number come from company_line.
+    company_name: str = "Du7 Technology Services"
 
     # Compliance
     private_cap_km: int = 500
@@ -174,6 +181,16 @@ class Settings(BaseSettings):
     @property
     def onboarding_file(self) -> Path:
         return self.data_dir / "onboarding.json"
+
+    @property
+    def whatsapp_health_file(self) -> Path:
+        """The number's last quality rating and messaging limit (wa_health.py)."""
+        return self.data_dir / "whatsapp-health.json"
+
+    @property
+    def invoices_dir(self) -> Path:
+        """VAT invoices: the register and one PDF each (invoices.py)."""
+        return self.data_dir / "invoices"
 
     @property
     def signups_file(self) -> Path:

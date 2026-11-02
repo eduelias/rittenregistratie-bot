@@ -4,18 +4,21 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from starlette.background import BackgroundTask
 
-from . import whatsapp
+from . import wa_health, whatsapp
 from .config import get_settings
 from .engine import Engine, EngineError, ExportRequest, UnknownCarError
 from .billing import Billing, Mollie, MollieError
 from .events import hook_event
 from .export import ExportError
-from .i18n import parse_language_command, set_current, t
+from .i18n import date_text, money, parse_language_command, set_current, t
+from .invoices import Invoice, Invoicing, caption as invoice_caption, details_text
+from .invoices import parse_command as parse_invoice_command
 from .window import InboundWindow
 from .models import VehicleTripReport
 from .parser import ParseError
@@ -24,7 +27,18 @@ from .site import build_router, install_not_found
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("rittenregistratie")
 
-app = FastAPI(title="rittenregistratie-bot")
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Background work while the app runs: the WhatsApp health check."""
+    tasks = []
+    if _settings.whatsapp_token and _settings.whatsapp_phone_number_id:
+        tasks.append(asyncio.create_task(wa_health.watch(_settings, _alert_admins)))
+    yield
+    for task in tasks:
+        task.cancel()
+
+
+app = FastAPI(title="rittenregistratie-bot", lifespan=_lifespan)
 _settings = get_settings()
 _engine = Engine(_settings)
 
@@ -66,6 +80,17 @@ async def _alert(phone: str, text: str, event: str = "", subject: str = "") -> b
     return await _notify(phone, text)
 
 
+async def _alert_admins(key: str, **kw) -> None:
+    """A catalog alert to every admin, each in their own language."""
+    for admin in _settings.admin_list():
+        lang = _engine.languages.of(admin)
+        try:
+            await _alert(admin, t(key, lang, **kw), event=t(key.replace("alert.", "event."), lang),
+                         subject=str(kw.get("number", "")))
+        except Exception:  # pragma: no cover - an alert must not stop the caller
+            log.exception("admin alert %s failed", key)
+
+
 async def _send_code(phone: str, code: str) -> bool:
     """A one-time code for the website's cancel button: the authentication
     template, which reaches the number whatever its 24-hour window."""
@@ -99,9 +124,53 @@ async def _confirm_cancel(phone: str, reply: str, until: str) -> bool:
     return await _notify(phone, reply)
 
 
+async def _send_pdf(phone: str, path, filename: str, caption: str) -> bool:
+    graph_url = f"https://graph.facebook.com/{_settings.whatsapp_graph_version}"
+    token, pid = _settings.whatsapp_token, _settings.whatsapp_phone_number_id
+    media_id = await whatsapp.upload_media(token, pid, path, graph_url=graph_url)
+    if not media_id:
+        return False
+    return await whatsapp.send_document(token, pid, phone, media_id, filename, caption=caption,
+                                        graph_url=graph_url)
+
+
+async def _deliver_invoice(phone: str, invoice: Invoice) -> bool:
+    """A new invoice to its subscriber: the PDF while their 24-hour window is
+    open, else the invoice template asking them to reply 'factuur' (a document
+    outside the window would be accepted and then dropped)."""
+    lang = _engine.languages.of(phone)
+    if _window.is_open(phone) and await _send_pdf(
+            phone, _invoicing.store.pdf(invoice), invoice.filename, invoice_caption(invoice, lang)):
+        return True
+    name = (_settings.whatsapp_invoice_template or "").strip()
+    graph_url = f"https://graph.facebook.com/{_settings.whatsapp_graph_version}"
+    for code in dict.fromkeys((lang, "en")) if name else ():
+        if await whatsapp.send_template(
+            _settings.whatsapp_token, _settings.whatsapp_phone_number_id, phone, name,
+            [f"€ {money(invoice.total, code)}", invoice.number], language=code, graph_url=graph_url,
+        ):
+            return True
+    log.warning("Invoice %s could not be delivered to %s; it is kept for 'factuur'.",
+                invoice.number, phone)
+    return False
+
+
+async def _invoice_paid(signup, payment: dict) -> None:
+    """Billing's on_paid: issue the invoice (an error goes back to Billing,
+    which alerts the admins) and deliver it (best effort)."""
+    invoice = await _invoicing.issue(signup, payment, mollie=_billing.mollie)
+    if invoice is None:
+        return
+    try:
+        await _deliver_invoice(signup.phone, invoice)
+    except Exception:  # pragma: no cover - the invoice exists; 'factuur' gets it
+        log.exception("delivering invoice %s failed", invoice.number)
+
+
+_invoicing = Invoicing(_settings)
 _billing = (
     Billing(_settings, _engine, Mollie(_settings.mollie_api_key, _settings.mollie_api_url),
-            _notify, alert=_alert)
+            _notify, alert=_alert, on_paid=_invoice_paid)
     if _settings.billing_enabled else None
 )
 _site = build_router(_settings, _billing, send_code=_send_code, confirm_cancel=_confirm_cancel)
@@ -117,6 +186,30 @@ async def _subscription_reply(sender: str, text: str) -> str | None:
     except MollieError:
         log.exception("subscription command failed")
         return t("sub.failed")
+
+
+async def _invoice_command(sender: str, action: str, arg: str) -> None:
+    """factuur [nummer], facturen, factuurgegevens, bedrijfsnaam, factuuradres."""
+    if action in ("company", "address") and arg:
+        signup = await _billing.set_billing_details(sender, **{action: arg})
+        reply = t("inv.saved") + "\n\n" + details_text(signup)
+    elif action in ("company", "address", "details"):
+        reply = details_text(_billing.signup_for(sender))
+    else:
+        mine = _invoicing.store.for_phone(sender)
+        if action == "list":
+            reply = "\n".join([t("inv.list")] + [
+                f"{i.number} · {date_text(i.issued)} · € {money(i.total)}" for i in mine[-24:]
+            ] + [t("inv.list_hint")]) if mine else t("inv.none")
+        else:
+            invoice = (next((i for i in mine if i.number.lower() == arg.lower()), None) if arg
+                       else (mine[-1] if mine else None))
+            if invoice is not None and await _send_pdf(
+                    sender, _invoicing.store.pdf(invoice), invoice.filename, invoice_caption(invoice)):
+                return
+            reply = (t("inv.not_sent") if invoice is not None
+                     else t("inv.not_found", number=arg) if arg else t("inv.none"))
+    await _send_all(sender, reply, [])
 
 
 @app.get("/health")
@@ -338,6 +431,13 @@ async def webhook(request: Request) -> Response:
         from .analytics import report
         days = min(int(stats.group(1) or 7), 400) or 7
         await _send_all(sender, report(_settings, days=days), extra_notify)
+        return Response(status_code=200, content="ok")
+
+    # Invoices and billing details, for any number with a subscription
+    # (also a former subscriber, whose car is gone).
+    invoice_cmd = parse_invoice_command(text or "") if _billing is not None else None
+    if invoice_cmd and _billing.signup_for(sender) is not None:
+        await _invoice_command(sender, *invoice_cmd)
         return Response(status_code=200, content="ok")
 
     if is_admin and admin_cmd:
