@@ -67,7 +67,11 @@ No ruff config here (unlike the private-plugins sibling) — CI runs pytest only
   `assign`, `unassign`, `deny`, `list`, `remove`).
 - `billing.py` + `site.py` (+ `site/*.html`) — rrbot.nl landing page and paid
   signup through Mollie: first payment → subscription → car with
-  `subscription:` in cars.yaml. See `docs/subscriptions.md`.
+  `subscription:` in cars.yaml. See `docs/subscriptions.md`. Also the SEO side:
+  `robots.txt`, `sitemap.xml` (`SITEMAP`), an HTML 404 (`install_not_found`),
+  the guide pages in `GUIDES` and the free Excel template
+  (`excel_writer.template_workbook`). The guides make tax claims with a
+  belastingdienst.nl source per rule: re-check them when the rules change.
 - `i18n.py` — every bot text in Dutch and English (`CATALOG`), language per
   number (`data/languages.json`, `taal`/`language` command), default
   `RIT_DEFAULT_LANGUAGE=nl`. Use `t("key", ...)`, never a literal reply. Tests

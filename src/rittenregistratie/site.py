@@ -1,4 +1,4 @@
-"""The public website: landing page, signup, Mollie return and webhook.
+"""The public website: landing page, guides, signup, Mollie return and webhook.
 
 Mounted by ``main.py``. Pages are plain HTML files in ``site/`` filled with
 :class:`string.Template` (``$name``); everything a customer typed is escaped.
@@ -11,7 +11,9 @@ import hashlib
 import hmac
 import html
 import json
+import io
 import logging
+import re
 import secrets
 import time
 from collections import deque
@@ -20,8 +22,9 @@ from string import Template
 from typing import Awaitable, Callable, Deque, Dict, Optional
 from urllib.parse import parse_qsl, quote, urlsplit
 
-from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .billing import SignupError as _SignupError, parse_phone
 from .billing import (
@@ -35,8 +38,34 @@ log = logging.getLogger("rittenregistratie.site")
 SITE_DIR = Path(__file__).parent / "site"
 
 NAME = "RittenRegistratie-bot"
-DESCRIPTION = ("Houd je rittenregistratie bij via WhatsApp. Stuur je kilometerstand en bestemming, "
-               "ontvang een Excel met alle velden die de Belastingdienst vraagt. 14 dagen gratis.")
+# What search results show: the title leads with the search term and stays under 60
+# characters (the brand comes from the WebSite node in the JSON-LD), the description
+# under 155.
+TITLE = "Rittenregistratie via WhatsApp, zonder app of kastje"
+DESCRIPTION = ("Rittenregistratie via WhatsApp voor zzp en zakelijke auto: app je kilometerstand en "
+               "bestemming, krijg een Excel voor de Belastingdienst. 14 dagen gratis.")
+
+# Guide pages: path -> (file under site/, <title>, meta description). Indexed, listed in
+# the sitemap, counted like the landing page.
+GUIDES = {
+    "/rittenregistratie-eisen": (
+        "rittenregistratie-eisen.html",
+        "Rittenregistratie: eisen Belastingdienst 2026",
+        "Wat moet er in een rittenregistratie? De velden per rit, wanneer hij sluitend is, de "
+        "500 km privé-grens en hoe lang je hem bewaart. Met bronnen.",
+    ),
+    "/rittenregistratie-excel": (
+        "rittenregistratie-excel.html",
+        "Rittenregistratie in Excel: gratis sjabloon",
+        "Gratis Excel-sjabloon voor je rittenregistratie, met de kolommen die de Belastingdienst "
+        "per rit vraagt. Plus: zo vul je hem in en zo houd je hem sluitend.",
+    ),
+}
+TEMPLATE_PATH = "/rittenregistratie-excel/sjabloon.xlsx"
+TEMPLATE_NAME = "rittenregistratie-sjabloon.xlsx"
+# Pages in the sitemap besides the guides. /herroeping and the cancel pages stay out
+# (noindex); so does everything behind a signup.
+SITEMAP = ["/", *GUIDES, "/voorwaarden", "/privacy"]
 
 # Files under site/ a browser may fetch from /static/<name>, with their media type.
 # The favicon is du7's own (as on du7.dev); the bot icon is its WhatsApp profile picture.
@@ -54,6 +83,28 @@ STATIC = {
 
 def _nl(value: str) -> str:
     return f"{float(value):.2f}".replace(".", ",")
+
+
+def company_facts(line: str) -> dict:
+    """Address, KvK and VAT number out of ``RIT_COMPANY_LINE``
+    (``"Buitenhof 128, 1354 GT Almere · KvK 91476003 · btw NL004896802B29"``),
+    as schema.org Organization fields. A part that is missing or still a
+    placeholder is left out."""
+    out: dict = {}
+    for part in (p.strip() for p in line.split("·")):
+        addr = re.fullmatch(r"(.+?),\s*(\d{4}\s?[A-Z]{2})\s+(.+)", part)
+        if addr:
+            out["address"] = {"@type": "PostalAddress", "streetAddress": addr.group(1),
+                              "postalCode": addr.group(2), "addressLocality": addr.group(3),
+                              "addressCountry": "NL"}
+        kvk = re.fullmatch(r"KvK\s*(\d{8})", part, re.I)
+        if kvk:
+            out["identifier"] = {"@type": "PropertyValue", "propertyID": "KvK",
+                                 "value": kvk.group(1)}
+        vat = re.fullmatch(r"btw\s*(NL\d{9}B\d{2})", part, re.I)
+        if vat:
+            out["vatID"] = vat.group(1)
+    return out
 
 
 def _read(name: str) -> str:
@@ -176,13 +227,13 @@ def build_router(settings: Settings, billing: Optional[Billing], *,
         except Exception:  # pragma: no cover - statistics are best effort
             log.exception("page count failed")
 
-    def head_meta(title: str, path: str) -> str:
+    def head_meta(title: str, path: str, description: str = DESCRIPTION) -> str:
         """Icons, theme colour and the tags link previews (WhatsApp, LinkedIn,
         search engines) read. Absolute URLs need RIT_PUBLIC_BASE_URL."""
         e = html.escape
         url, card = f"{base}{path}", f"{base}/static/og-card.png"
         tags = [
-            f'<meta name="description" content="{e(DESCRIPTION)}">',
+            f'<meta name="description" content="{e(description)}">',
             '<link rel="icon" href="/favicon.ico" sizes="32x32">',
             '<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">',
             '<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">',
@@ -191,14 +242,14 @@ def build_router(settings: Settings, billing: Optional[Billing], *,
             f'<meta property="og:site_name" content="{NAME}">',
             '<meta property="og:locale" content="nl_NL">',
             f'<meta property="og:title" content="{e(title)}">',
-            f'<meta property="og:description" content="{e(DESCRIPTION)}">',
+            f'<meta property="og:description" content="{e(description)}">',
             f'<meta property="og:image" content="{e(card)}">',
             '<meta property="og:image:width" content="1200">',
             '<meta property="og:image:height" content="630">',
             f'<meta property="og:image:alt" content="{NAME}: je rittenregistratie, gewoon via WhatsApp">',
             '<meta name="twitter:card" content="summary_large_image">',
         ]
-        if base:
+        if base and path:
             tags += [f'<link rel="canonical" href="{e(url)}">',
                      f'<meta property="og:url" content="{e(url)}">']
         return "\n".join(tags)
@@ -206,9 +257,12 @@ def build_router(settings: Settings, billing: Optional[Billing], *,
     def json_ld() -> str:
         """schema.org data for search engines: who sells what, for how much."""
         org = {"@type": "Organization", "@id": f"{base}/#du7", "name": "Du7 Technology Services",
-               "url": "https://du7.dev"}
+               "url": "https://du7.dev", "sameAs": ["https://du7.dev"],
+               **company_facts(settings.company_line)}
         if settings.support_email:
             org["email"] = settings.support_email
+        site = {"@type": "WebSite", "@id": f"{base}/#site", "name": NAME, "url": f"{base}/",
+                "inLanguage": "nl", "publisher": {"@id": org["@id"]}}
         app = {
             "@type": "SoftwareApplication", "name": NAME, "url": f"{base}/",
             "description": DESCRIPTION, "inLanguage": "nl",
@@ -221,16 +275,18 @@ def build_router(settings: Settings, billing: Optional[Billing], *,
                  "priceCurrency": "EUR"},
             ],
         }
-        data = {"@context": "https://schema.org", "@graph": [org, app]}
+        data = {"@context": "https://schema.org", "@graph": [org, app, site]}
         return json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
 
     def page(title: str, body: str, status: int = 200, *, robots: str = "noindex",
-             head_extra: str = "", path: str = "") -> HTMLResponse:
+             head_extra: str = "", path: str = "", description: str = DESCRIPTION,
+             cta: bool = False) -> HTMLResponse:
         filled = Template(body).safe_substitute(values())
+        nav = '<nav><a class="btn small" href="/#aanmelden">Probeer gratis</a></nav>' if cta else ""
         return HTMLResponse(
             Template(_read("page.html")).safe_substitute(values(
-                title=html.escape(title), body=filled, robots=robots, head_extra=head_extra,
-                head_meta=head_meta(f"{title} · {NAME}", path),
+                title=html.escape(title), body=filled, robots=robots, head_extra=head_extra, nav=nav,
+                head_meta=head_meta(f"{title} · {NAME}", path, description),
             )),
             status_code=status,
         )
@@ -248,7 +304,7 @@ def build_router(settings: Settings, billing: Optional[Billing], *,
             block = Template(_read("form.html")).safe_substitute(values())
         return HTMLResponse(Template(_read("index.html")).safe_substitute(values(
             signup_block=block, json_ld=json_ld(),
-            head_meta=head_meta(f"{NAME}: rittenregistratie via WhatsApp", "/"),
+            title=html.escape(TITLE), head_meta=head_meta(TITLE, "/"),
         )))
 
     @router.get("/static/{name}")
@@ -262,6 +318,54 @@ def build_router(settings: Settings, billing: Optional[Billing], *,
     @router.get("/favicon.ico")
     async def favicon() -> FileResponse:
         return FileResponse(SITE_DIR / "favicon.ico", media_type="image/x-icon")
+
+    @router.get("/robots.txt", response_class=PlainTextResponse)
+    async def robots() -> str:
+        lines = ["User-agent: *", "Disallow: /aanmelden", "Disallow: /opzeggen",
+                 "Disallow: /billing/", "Allow: /"]
+        if base:
+            lines.append(f"Sitemap: {base}/sitemap.xml")
+        return "\n".join(lines) + "\n"
+
+    @router.get("/sitemap.xml")
+    async def sitemap() -> Response:
+        urls = "".join(f"<url><loc>{html.escape(base + p)}</loc></url>" for p in SITEMAP)
+        return Response('<?xml version="1.0" encoding="UTF-8"?>\n'
+                        f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>\n',
+                        media_type="application/xml")
+
+    def guide_page(path: str):
+        name, title, description = GUIDES[path]
+
+        async def show(request: Request) -> HTMLResponse:
+            count(request, path)
+            return page(title, _read(name), robots="index", path=path, description=description,
+                        cta=True)
+        return show
+
+    for path in GUIDES:
+        router.add_api_route(path, guide_page(path), methods=["GET"], response_class=HTMLResponse)
+
+    def not_found() -> HTMLResponse:
+        return page("Pagina niet gevonden", (
+            "<h1>Deze pagina bestaat niet</h1>"
+            "<p>Misschien is de link oud of zit er een tikfout in.</p>"
+            '<p><a class="btn" href="/">Naar de homepage</a></p>'
+            "<p>Of lees verder over <a href=\"/rittenregistratie-eisen\">wat er in een "
+            "rittenregistratie moet</a> en <a href=\"/rittenregistratie-excel\">rittenregistratie "
+            "in Excel</a>.</p>"), status=404, cta=True)
+    router.not_found = not_found  # used by install_not_found()
+
+    @router.get(TEMPLATE_PATH)
+    async def excel_template(request: Request) -> Response:
+        count(request, TEMPLATE_PATH)
+        from .excel_writer import template_workbook
+        buf = io.BytesIO()
+        template_workbook(f"{base or 'https://rrbot.nl'}/").save(buf)
+        return Response(buf.getvalue(), headers={
+            "Content-Disposition": f'attachment; filename="{TEMPLATE_NAME}"',
+            "Cache-Control": "public, max-age=86400"},
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     @router.get("/voorwaarden", response_class=HTMLResponse)
     async def terms(request: Request) -> HTMLResponse:
@@ -468,3 +572,16 @@ def build_router(settings: Settings, billing: Optional[Billing], *,
         )
 
     return router
+
+
+def install_not_found(app: FastAPI, router: APIRouter) -> None:
+    """Unknown paths get the site's own 404 page (a real 404 status) instead of
+    FastAPI's ``{"detail": "Not Found"}``. Other HTTP errors keep the default."""
+    from fastapi.exception_handlers import http_exception_handler
+
+    async def handler(request: Request, exc: StarletteHTTPException) -> Response:
+        if exc.status_code == 404 and request.method in ("GET", "HEAD"):
+            return router.not_found()
+        return await http_exception_handler(request, exc)
+
+    app.add_exception_handler(StarletteHTTPException, handler)
