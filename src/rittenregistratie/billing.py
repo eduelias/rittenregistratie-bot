@@ -73,6 +73,7 @@ log = logging.getLogger("rittenregistratie.billing")
 PLANS = ("monthly", "yearly")
 _INTERVAL = {"monthly": "1 month", "yearly": "12 months"}
 _PLAN_NL = {"monthly": "maandelijks", "yearly": "jaarlijks"}
+_LOCALE = {"nl": "nl_NL", "en": "en_US"}   # Mollie checkout language per site language
 
 # Signup.status values
 PENDING = "pending"          # form sent, first payment not (yet) paid
@@ -87,7 +88,15 @@ _PAYMENT_DEAD = ("failed", "canceled", "expired")
 
 
 class SignupError(ValueError):
-    """A form value the customer must correct (message is shown to them, Dutch)."""
+    """A form value the customer must correct. ``str()`` is the Dutch text,
+    :meth:`text` the one for the form's language."""
+
+    def __init__(self, nl: str, en: str = ""):
+        super().__init__(nl)
+        self.en = en or nl
+
+    def text(self, lang: str) -> str:
+        return self.en if lang == "en" else str(self)
 
 
 class MollieError(RuntimeError):
@@ -126,6 +135,9 @@ class Signup:
     # Optional, for invoices (invoices.py); the customer can change them later.
     company: str = ""
     billing_address: str = ""
+    # The website language the customer signed up in (nl | en): the bot
+    # speaks it to them from the start, and Mollie's checkout uses it.
+    lang: str = "nl"
 
     def note(self, text: str) -> None:
         self.events.append(f"{datetime.now().isoformat(timespec='seconds')} {text}")
@@ -247,7 +259,8 @@ def parse_phone(raw: str) -> str:
     elif len(digits) == 10 and digits.startswith("06"):
         digits = "31" + digits[1:]
     if not (10 <= len(digits) <= 15) or digits.startswith("0"):
-        raise SignupError("Vul je WhatsApp-nummer in, bijvoorbeeld 06 12345678 of +31 6 12345678.")
+        raise SignupError("Vul je WhatsApp-nummer in, bijvoorbeeld 06 12345678 of +31 6 12345678.",
+                          "Enter your WhatsApp number, e.g. 06 12345678 or +31 6 12345678.")
     return digits
 
 
@@ -279,6 +292,14 @@ class Billing:
         # In memory: after a restart a number just asks for the menu again.
         self._menus: Dict[str, Tuple[float, List[Tuple[str, Optional[str]]]]] = {}
 
+    @staticmethod
+    def _mandate_description(signup: Signup, plan: str, renew: bool = False) -> str:
+        """What the customer sees at Mollie's checkout and on the bank statement."""
+        if signup.lang == "en":
+            return f"RittenRegistratie-bot mandate ({plan} plan{', restart' if renew else ''})"
+        return (f"RittenRegistratie-bot machtiging ({_PLAN_NL[plan]} abonnement"
+                f"{', hervatten' if renew else ''})")
+
     # --- urls ---------------------------------------------------------
     @property
     def _base(self) -> str:
@@ -309,31 +330,37 @@ class Billing:
         label = (form.get("car_label") or "").strip()
         address = (form.get("seed_address") or "").strip()
         plan = (form.get("plan") or "monthly").strip()
+        lang = "en" if form.get("lang") == "en" else "nl"
         company = " ".join((form.get("company") or "").split())
         billing_address = " ".join((form.get("billing_address") or "").split())
         if not name:
-            raise SignupError("Vul je naam in.")
+            raise SignupError("Vul je naam in.", "Enter your name.")
         if not _EMAIL_RE.match(email):
-            raise SignupError("Vul een geldig e-mailadres in.")
+            raise SignupError("Vul een geldig e-mailadres in.", "Enter a valid email address.")
         phone = parse_phone(form.get("phone") or "")
         if not label:
-            raise SignupError("Geef je auto een naam, bijvoorbeeld het kenteken.")
+            raise SignupError("Geef je auto een naam, bijvoorbeeld het kenteken.",
+                              "Give your car a name, for example its number plate.")
         odo_raw = re.sub(r"[.\s]", "", form.get("seed_odometer") or "")
         if not odo_raw.isdigit() or not (0 <= int(odo_raw) <= 2_000_000):
-            raise SignupError("Vul de huidige kilometerstand in (alleen cijfers).")
+            raise SignupError("Vul de huidige kilometerstand in (alleen cijfers).",
+                              "Enter the current odometer reading (digits only).")
         if not address:
-            raise SignupError("Vul het adres in waar je eerste rit begint.")
+            raise SignupError("Vul het adres in waar je eerste rit begint.",
+                              "Enter the address where your first trip starts.")
         if plan not in PLANS:
-            raise SignupError("Kies maandelijks of jaarlijks.")
+            raise SignupError("Kies maandelijks of jaarlijks.", "Choose monthly or yearly.")
         if form.get("terms") not in ("on", "yes", "true", "1"):
-            raise SignupError("Ga akkoord met de voorwaarden om verder te gaan.")
+            raise SignupError("Ga akkoord met de voorwaarden om verder te gaan.",
+                              "Accept the terms to continue.")
         if self.engine.cars.is_registered(phone):
-            raise SignupError("Dit nummer gebruikt de bot al. Stuur 'abonnement' in WhatsApp.")
+            raise SignupError("Dit nummer gebruikt de bot al. Stuur 'abonnement' in WhatsApp.",
+                              "This number already uses the bot. Send 'subscription' in WhatsApp.")
         return Signup(
             id=secrets.token_urlsafe(16), name=name[:100], email=email[:200], phone=phone,
             car_label=label[:60], seed_odometer=int(odo_raw), seed_address=address[:200],
             plan=plan, created_at=datetime.now().isoformat(timespec="seconds"),
-            company=company[:100], billing_address=billing_address[:200],
+            company=company[:100], billing_address=billing_address[:200], lang=lang,
         )
 
     async def start(self, form: Dict[str, str]) -> str:
@@ -341,7 +368,8 @@ class Billing:
         return the checkout URL. Raises SignupError for the customer."""
         signup = self.validate(form)
         if not self.has_room():
-            raise SignupError("We zitten op dit moment vol. Probeer het later opnieuw.")
+            raise SignupError("We zitten op dit moment vol. Probeer het later opnieuw.",
+                              "We're full at the moment. Please try again later.")
         customer = await self.mollie.create_customer(
             signup.name, signup.email, {"signup_id": signup.id})
         signup.customer_id = customer["id"]
@@ -349,9 +377,9 @@ class Billing:
             "amount": amount(self.settings.mandate_amount),
             "customerId": signup.customer_id,
             "sequenceType": "first",
-            "description": f"RittenRegistratie-bot machtiging ({_PLAN_NL[signup.plan]} abonnement)",
+            "description": self._mandate_description(signup, signup.plan),
             "redirectUrl": self.return_url(signup),
-            "locale": "nl_NL",
+            "locale": _LOCALE[signup.lang],
             "metadata": {"signup_id": signup.id},
         }
         hook = self._webhook_url()
@@ -433,6 +461,9 @@ class Billing:
         return sub
 
     async def _activate(self, signup: Signup, payment: dict) -> None:
+        if signup.lang == "en" and self.engine.languages.get(signup.phone) is None:
+            # Signed up on the English site: the bot speaks English from the start.
+            self.engine.languages.set(signup.phone, "en")
         start = date.today() + timedelta(days=self.settings.trial_days)
         sub = await self._subscribe(signup, signup.plan, start, payment.get("mandateId") or "")
         signup.trial_until = (start - timedelta(days=1)).isoformat()
@@ -819,9 +850,9 @@ class Billing:
             "amount": amount(self.settings.mandate_amount),
             "customerId": signup.customer_id,
             "sequenceType": "first",
-            "description": f"RittenRegistratie-bot machtiging ({_PLAN_NL[plan]} abonnement, hervatten)",
+            "description": self._mandate_description(signup, plan, renew=True),
             "redirectUrl": self.return_url(signup),
-            "locale": "nl_NL",
+            "locale": _LOCALE[signup.lang],
             "metadata": {"signup_id": signup.id, "renew": True},
         }
         hook = self._webhook_url()

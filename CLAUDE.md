@@ -72,6 +72,11 @@ No ruff config here (unlike the private-plugins sibling) — CI runs pytest only
   the guide pages in `GUIDES` and the free Excel template
   (`excel_writer.template_workbook`). The guides make tax claims with a
   belastingdienst.nl source per rule: re-check them when the rules change.
+  English site under `/en/` (`site/en/`, `EN_GUIDES`): landing, requirements
+  guide, terms and privacy (translations; the Dutch versions prevail). `PAIRS`
+  maps each Dutch page to its English one for hreflang, the sitemap
+  alternates and the NL/EN switch. A signup from `/en/` stores `lang=en`: the
+  bot speaks English to that number and Mollie's checkout is `en_US`.
 - `i18n.py` — every bot text in Dutch and English (`CATALOG`), language per
   number (`data/languages.json`, `taal`/`language` command), default
   `RIT_DEFAULT_LANGUAGE=nl`. Use `t("key", ...)`, never a literal reply. Tests

@@ -1,0 +1,21 @@
+<form method="post" action="/aanmelden" class="form">
+    <input type="hidden" name="lang" value="en">
+    <label>Name<input name="name" required autocomplete="name"></label>
+    <label>Email address<input name="email" type="email" required autocomplete="email"></label>
+    <label>WhatsApp number<input name="phone" type="tel" required placeholder="+31 6 12345678" autocomplete="tel"></label>
+    <label>Name of your car<input name="car_label" required placeholder="e.g. Golf or 12-ABC-3"></label>
+    <label>Current odometer reading (km)<input name="seed_odometer" inputmode="numeric" pattern="[0-9 .]*" required placeholder="45192"></label>
+    <label>Address where your first trip starts<input name="seed_address" required placeholder="Dorpsstraat 1, Utrecht" autocomplete="street-address"></label>
+    <details class="optional"><summary>Invoice in your company's name? (optional)</summary>
+      <label>Company name<input name="company" maxlength="100" autocomplete="organization"></label>
+      <label>Billing address<input name="billing_address" maxlength="200" placeholder="Street 1, 1234 AB Town" autocomplete="street-address"></label>
+      <p class="fine">After every payment you get a VAT invoice in WhatsApp (in Dutch). You can change these details later with 'billing details'.</p>
+    </details>
+    <fieldset><legend>Plan</legend>
+      <label class="radio"><input type="radio" name="plan" value="monthly" checked> Monthly, € $price_monthly_en</label>
+      <label class="radio"><input type="radio" name="plan" value="yearly"> Yearly, € $price_yearly_en</label>
+    </fieldset>
+    <label class="check"><input type="checkbox" name="terms" required> I accept the <a href="/en/terms" target="_blank">terms</a> and the <a href="/en/privacy" target="_blank">privacy statement</a>.</label>
+    <button class="btn" type="submit">Continue to the mandate (€ $mandate_en)</button>
+    <p class="fine">You go to Mollie to pay with iDEAL or a credit card. Your subscription starts after $trial_days days. The bot will talk to you in English.</p>
+  </form>
