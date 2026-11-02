@@ -123,6 +123,9 @@ class Signup:
     renew_plan: str = ""
     renew_start: str = ""       # ISO date the new subscription should start
     data_deleted_at: str = ""   # set by retention.py once the trip data is gone
+    # Optional, for invoices (invoices.py); the customer can change them later.
+    company: str = ""
+    billing_address: str = ""
 
     def note(self, text: str) -> None:
         self.events.append(f"{datetime.now().isoformat(timespec='seconds')} {text}")
@@ -259,7 +262,8 @@ class Billing:
     ``notify(phone, text)`` sends a WhatsApp message (admins, customers)."""
 
     def __init__(self, settings: Settings, engine, mollie: Mollie, notify: Notify,
-                 alert: Optional[Notify] = None):
+                 alert: Optional[Notify] = None,
+                 on_paid: Optional[Callable[[Signup, dict], Awaitable[object]]] = None):
         self.settings = settings
         self.engine = engine
         self.mollie = mollie
@@ -267,6 +271,8 @@ class Billing:
         # Messages to admins: may need a template when their window is closed.
         # Called as alert(phone, text, event=<label>, subject=<subscriber number>).
         self.alert = alert or (lambda phone, text, **_: notify(phone, text))
+        # Called (under the lock) for every paid subscription payment: invoices.
+        self.on_paid = on_paid
         self.store = SignupStore(settings.signups_file)
         self._lock = asyncio.Lock()
         # phone -> (expiry on the monotonic clock, the menu's (action, plan)s).
@@ -303,6 +309,8 @@ class Billing:
         label = (form.get("car_label") or "").strip()
         address = (form.get("seed_address") or "").strip()
         plan = (form.get("plan") or "monthly").strip()
+        company = " ".join((form.get("company") or "").split())
+        billing_address = " ".join((form.get("billing_address") or "").split())
         if not name:
             raise SignupError("Vul je naam in.")
         if not _EMAIL_RE.match(email):
@@ -325,6 +333,7 @@ class Billing:
             id=secrets.token_urlsafe(16), name=name[:100], email=email[:200], phone=phone,
             car_label=label[:60], seed_odometer=int(odo_raw), seed_address=address[:200],
             plan=plan, created_at=datetime.now().isoformat(timespec="seconds"),
+            company=company[:100], billing_address=billing_address[:200],
         )
 
     async def start(self, form: Dict[str, str]) -> str:
@@ -488,7 +497,34 @@ class Billing:
             await self._tell_admins("alert.charge_failed", payment=payment.get("id"),
                                     name=signup.name, phone=signup.phone, car=signup.car_id,
                                     status=status)
+        elif status == "paid" and self.on_paid is not None:
+            try:
+                await self.on_paid(signup, payment)
+            except Exception:  # an invoice problem must not break billing
+                log.exception("on_paid failed for payment %s", payment.get("id"))
+                await self._tell_admins("alert.invoice_failed", payment=payment.get("id"),
+                                        name=signup.name, phone=signup.phone)
         return signup
+
+    async def set_billing_details(self, phone: str, *, company: Optional[str] = None,
+                                  address: Optional[str] = None) -> Optional[Signup]:
+        """Change the invoice details of this number's current signup ('-'
+        clears one). None when the number has no signup."""
+        async with self._lock:
+            signup = self._current(phone)
+            if signup is None:
+                return None
+            if company is not None:
+                signup.company = "" if company == "-" else " ".join(company.split())[:100]
+            if address is not None:
+                signup.billing_address = "" if address == "-" else " ".join(address.split())[:200]
+            signup.note("billing details changed")
+            self.store.save(signup)
+            return signup
+
+    def signup_for(self, phone: str) -> Optional[Signup]:
+        """This number's current signup (see :meth:`_current`), or None."""
+        return self._current(phone)
 
     # --- 3. subscriber commands over WhatsApp -------------------------
     def _current(self, phone: str) -> Optional[Signup]:

@@ -76,6 +76,10 @@ nav a.btn { color: #fff; }
 .form label { display: grid; gap: 4px; font-weight: 600; font-size: .95rem; }
 .form input:not([type=radio]):not([type=checkbox]) { font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
 .form fieldset { border: 0; padding: 0; margin: 0; }
+.form details.optional { display: grid; gap: 10px; }
+.form details.optional summary { font-weight: 600; font-size: .95rem; cursor: pointer; }
+.form details.optional[open] summary { margin-bottom: 10px; }
+.form details.optional label { margin-bottom: 10px; }
 .form legend { font-weight: 600; font-size: .95rem; margin-bottom: 4px; }
 .form .radio, .form .check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; }
 .notice { background: #fff6e0; border: 1px solid #f1d38a; border-radius: 10px; padding: 12px 16px; }

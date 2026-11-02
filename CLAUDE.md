@@ -78,6 +78,15 @@ No ruff config here (unlike the private-plugins sibling) — CI runs pytest only
   run in English unless the module sets `BOT_LANGUAGE = "nl"` (conftest.py).
 - `analytics.py` — cookieless daily page counts (`data/analytics.json`) and the
   subscription funnel; admin `stats [days]`, weekly report via famulus.
+- `invoices.py` — a VAT invoice (PDF, art. 35a Wet OB) for every paid
+  subscription payment, numbered `2026-0001` without gaps (`TEST-` series for
+  test-mode payments), stored in `data/invoices/` and sent on WhatsApp (the
+  `invoice_ready` template when the window is closed). Commands `factuur`,
+  `facturen`, `factuurgegevens`, `bedrijfsnaam`, `factuuradres`. Never change
+  an issued invoice.
+- `wa_health.py` — every 6 hours the number's quality rating and messaging
+  limit into `data/whatsapp-health.json`; admins are alerted on a drop or a
+  limit change; the weekly report shows the last reading.
 - `retention.py` — deletes former subscribers' trip data after
   `RIT_RETENTION_DAYS`; daily timer in `deploy/`.
 

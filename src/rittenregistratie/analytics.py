@@ -32,6 +32,7 @@ from urllib.parse import parse_qs, urlsplit
 from .billing import (
     ACTIVE, ATTENTION, CANCELED, ENDED, FAILED, PAUSED, PENDING, Signup, SignupStore,
 )
+from . import wa_health
 from .config import Settings
 
 KEEP_DAYS = 400
@@ -242,7 +243,16 @@ def report(settings: Settings, days: int = 7, today: Optional[date] = None) -> s
     ]
     if f["attention"]:
         lines.append(f"Attention: {f['attention']} paid signup(s) waiting for you.")
+    lines += ["", _invoices_line(settings, start, today), wa_health.report_line(settings)]
     return "\n".join(lines)
+
+
+def _invoices_line(settings: Settings, start: date, end: date) -> str:
+    from .invoices import InvoiceStore
+    mine = [i for i in InvoiceStore(settings.invoices_dir).all()
+            if not i.test and start <= date.fromisoformat(i.issued) <= end]
+    return (f"Invoices: {len(mine)} issued, {_eur(sum(float(i.total) for i in mine))} incl. VAT"
+            f" ({_eur(sum(float(i.vat) for i in mine))} VAT)")
 
 
 def main(argv: Optional[List[str]] = None) -> int:

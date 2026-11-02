@@ -241,8 +241,10 @@ Legal and business:
 - [x] Processors named in the privacy statement (v2), each with a link to its
       own policy: Meta/WhatsApp, Mollie, Google (reverse geocoding),
       Cloudflare (DNS, mail forwarding).
-- [ ] Processing register (verwerkingsregister) and the processors' DPAs on
-      file: owner's paperwork, not code.
+- [x] Processing register: `docs/verwerkingsregister.md` (2026-11-02), with
+      each processor's DPA and how it takes effect. Open for the owner: accept
+      the Google Maps Platform EEA terms in the Cloud Console if prompted, and
+      file a PDF copy of each agreement.
 - [x] Cancel button (opzegknop, Dutch law since 2023): "Abonnement opzeggen"
       in the footer of every page, `/opzeggen`. The visitor enters the
       number, gets a 6-digit code through the `cancel_code` authentication
@@ -250,8 +252,14 @@ Legal and business:
       answer for non-customers), and cancels with it. The confirmation goes
       out on WhatsApp: the bot's reply inside the 24-hour window, else the
       `subscription_cancelled` template. `opzeggen` on WhatsApp still works.
-- [ ] Invoices: Mollie does not send VAT invoices for subscriptions. Business
-      customers will ask for one (Mollie Invoicing, Moneybird or similar).
+- [x] Invoices (2026-11-02, `invoices.py`): a PDF per paid subscription
+      payment with what art. 35a Wet OB requires, sent on WhatsApp, `factuur`
+      for a copy. Optional company name and billing address on the signup
+      form, changeable with `bedrijfsnaam` / `factuuradres`. The `invoice_ready`
+      utility template (en/nl) tells a subscriber outside the 24-hour window.
+      The €0.01 mandate payment gets no invoice. The owner books the invoices
+      from `data/invoices/` (register: `python -m rittenregistratie.invoices
+      list`).
 
 Mollie:
 - [ ] Complete Mollie onboarding: KvK extract, bank account, UBO, ID, website
@@ -306,7 +314,10 @@ Operations:
       default Dutch (#50); the trip template exists in both (#51).
 - [ ] The number is the Meta-provided +1 555; a Dutch number would look more
       trustworthy to customers.
-- [ ] Watch the WhatsApp messaging limit tier as customers grow.
+- [x] WhatsApp health: quality rating and messaging limit every 6 hours
+      (`wa_health.py`), alert on a drop or change, shown in the weekly report.
+      On 2026-11-02: GREEN, TIER_2K (Meta now reports the limit per business
+      portfolio, `whatsapp_business_manager_messaging_limit`).
 - [x] Webhook on `https://rrbot.nl/webhook` (verified with live traffic);
       `cloudflared-quick.service` stopped and disabled (2026-11-01).
 - [x] Campaign links are counted: `utm_source` and `utm_campaign` per day

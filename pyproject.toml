@@ -17,6 +17,7 @@ dependencies = [
     "pydantic>=2.6",
     "pydantic-settings>=2.2",
     "PyYAML>=6.0",
+    "fpdf2>=2.8",
 ]
 
 [project.optional-dependencies]

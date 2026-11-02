@@ -169,6 +169,8 @@ CATALOG: Dict[str, tuple] = {
         "'abonnement' toont je abonnement met een genummerd menu (antwoord met 1, 2, ...).\n"
         "Direct kan ook: 'pauzeren', 'hervatten', 'opzeggen', 'opnieuw', "
         "'maandelijks' of 'jaarlijks' (overstappen).\n"
+        "'factuur' stuurt je laatste factuur, 'facturen' toont ze allemaal, "
+        "'factuurgegevens' je bedrijfsnaam en factuuradres.\n"
         "Send 'english' for English.",
         "Welcome to RittenRegistratie ({label}).\n"
         "After every trip, send your odometer reading and destination:\n"
@@ -179,6 +181,8 @@ CATALOG: Dict[str, tuple] = {
         "'subscription' shows your subscription with a numbered menu (reply 1, 2, ...).\n"
         "Or directly: 'pause', 'resume', 'unsubscribe', 'restart', "
         "'monthly' or 'yearly' (switch plan).\n"
+        "'invoice' sends your latest invoice, 'invoices' lists them all, "
+        "'billing details' shows your company name and billing address.\n"
         "Stuur 'nederlands' voor Nederlands."),
     "car.unknown_list": ("Onbekende auto '{hint}'. Jouw auto's: {cars}.",
                          "Unknown car '{hint}'. Your cars: {cars}."),
@@ -524,6 +528,29 @@ CATALOG: Dict[str, tuple] = {
     "mandate.unknown": ("onbekend", "unknown"),
     "mandate.pending": (" (wordt nog verwerkt)", " (still being processed)"),
 
+    # --- invoices (invoices.py) -------------------------------------------------------
+    "inv.caption": ("Factuur {number}: € {amount}, {start} t/m {end}.",
+                    "Invoice {number}: € {amount}, {start} to {end}."),
+    "inv.none": ("Er is nog geen factuur voor dit nummer. De eerste komt na de eerste betaling van "
+                 "je abonnement, na de proefperiode.",
+                 "There is no invoice for this number yet. The first one comes after the first "
+                 "payment of your subscription, after the trial."),
+    "inv.not_found": ("Factuur {number} vind ik niet bij dit nummer. Stuur 'facturen' voor je facturen.",
+                      "I can't find invoice {number} for this number. Send 'invoices' for your "
+                      "invoices."),
+    "inv.list": ("Je facturen:", "Your invoices:"),
+    "inv.list_hint": ("Stuur 'factuur <nummer>' voor de pdf.", "Send 'invoice <number>' for the PDF."),
+    "inv.details": ("Factuurgegevens\nNaam: {name}\nBedrijfsnaam: {company}\nFactuuradres: {address}\n"
+                    "Wijzigen: 'bedrijfsnaam <naam>' of 'factuuradres <straat 1, 1234 AB plaats>'; "
+                    "'-' wist het. Nieuwe gegevens gelden vanaf de volgende factuur.",
+                    "Billing details\nName: {name}\nCompany: {company}\nBilling address: {address}\n"
+                    "Change: 'company <name>' or 'billing address <street 1, 1234 AB town>'; "
+                    "'-' clears it. New details apply from the next invoice."),
+    "inv.none_set": ("(niet ingevuld)", "(not set)"),
+    "inv.saved": ("Opgeslagen.", "Saved."),
+    "inv.not_sent": ("De factuur kon niet worden verstuurd. Probeer het later opnieuw.",
+                     "The invoice could not be sent. Please try again later."),
+
     # --- event types: the first parameter of the subscriber_event template ----------
     "event.new": ("nieuwe abonnee", "new subscriber"),
     "event.provision_failed": ("inrichten mislukt", "setup failed"),
@@ -539,6 +566,9 @@ CATALOG: Dict[str, tuple] = {
     "event.renewed": ("hervatting", "restart"),
     "event.join_request": ("aanmeldverzoek", "join request"),
     "event.other": ("melding", "notice"),
+    "event.invoice_failed": ("factuur mislukt", "invoice failed"),
+    "event.wa_quality": ("WhatsApp-kwaliteit", "WhatsApp quality"),
+    "event.wa_tier": ("WhatsApp-berichtlimiet", "WhatsApp messaging limit"),
 
     # --- alerts to admins (in each admin's language) ----------------------------------
     "alert.provision_failed": ("Betaalde aanmelding {id} ({phone}, {car}) kon niet worden ingericht: "
@@ -576,6 +606,22 @@ CATALOG: Dict[str, tuple] = {
                                "cars.yaml: {error}. Abonnement {sub} loopt.",
                                "{name} ({phone}) is paying again, but car {car} could not go back "
                                "into cars.yaml: {error}. Subscription {sub} is running."),
+    "alert.invoice_failed": ("Betaling {payment} van {name} ({phone}) is binnen, maar de factuur kon "
+                             "niet worden gemaakt. Zie de log; opnieuw: "
+                             "'python -m rittenregistratie.invoices issue {payment}'.",
+                             "Payment {payment} from {name} ({phone}) is in, but the invoice could "
+                             "not be made. See the log; retry: "
+                             "'python -m rittenregistratie.invoices issue {payment}'."),
+    "alert.wa_quality": ("De kwaliteit van het botnummer bij Meta is gedaald van {old} naar {new}. Bij "
+                         "RED beperkt Meta het nummer; kijk in WhatsApp Manager wat ontvangers "
+                         "blokkeren of melden.",
+                         "Meta's quality rating of the bot number dropped from {old} to {new}. At "
+                         "RED Meta restricts the number; check WhatsApp Manager for blocks and "
+                         "reports."),
+    "alert.wa_tier": ("De berichtlimiet van het botnummer is veranderd van {old} naar {new} "
+                      "(gesprekken die de bot per 24 uur mag beginnen).",
+                      "The bot number's messaging limit changed from {old} to {new} "
+                      "(conversations the bot may start per 24 hours)."),
     "alert.renewed": ("{name} ({phone}, {car}) heeft een nieuwe machtiging en gaat verder: {plan} "
                       "vanaf {date}.",
                       "{name} ({phone}, {car}) has a new mandate and continues: {plan} from {date}."),
