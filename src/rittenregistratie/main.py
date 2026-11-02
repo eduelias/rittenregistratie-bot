@@ -19,7 +19,7 @@ from .i18n import parse_language_command, set_current, t
 from .window import InboundWindow
 from .models import VehicleTripReport
 from .parser import ParseError
-from .site import build_router
+from .site import build_router, install_not_found
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("rittenregistratie")
@@ -104,8 +104,9 @@ _billing = (
             _notify, alert=_alert)
     if _settings.billing_enabled else None
 )
-app.include_router(build_router(_settings, _billing, send_code=_send_code,
-                                confirm_cancel=_confirm_cancel))
+_site = build_router(_settings, _billing, send_code=_send_code, confirm_cancel=_confirm_cancel)
+app.include_router(_site)
+install_not_found(app, _site)
 
 
 async def _subscription_reply(sender: str, text: str) -> str | None:

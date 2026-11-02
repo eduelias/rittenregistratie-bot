@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RittenRegistratie-bot: rittenregistratie via WhatsApp</title>
+<title>$title</title>
 $head_meta
 <script type="application/ld+json">$json_ld</script>
-<link rel="stylesheet" href="/static/site.css?v=3">
+<link rel="stylesheet" href="/static/site.css?v=5">
 </head>
 <body>
 <header class="top">
@@ -22,7 +22,7 @@ $head_meta
     <div>
       <h1>Je rittenregistratie, gewoon via WhatsApp.</h1>
       <p class="lead">Stuur na elke rit je kilometerstand en bestemming. RittenRegistratie-bot houdt je
-      rittenadministratie bij en stuurt je op verzoek een Excel met precies de velden die de
+      kilometerregistratie bij en stuurt je op verzoek een Excel met precies de velden die de
       Belastingdienst per rit vraagt.</p>
       <p><a class="btn" href="#aanmelden">Probeer 14 dagen gratis</a></p>
       <p class="fine">Geen app, geen kastje in je auto. Daarna € $price_monthly_nl per maand, maandelijks opzegbaar.</p>
@@ -53,6 +53,15 @@ $head_meta
 </section>
 
 <section class="wrap">
+  <h2>Voor wie</h2>
+  <p>Voor zzp'ers, ondernemers en werknemers met een auto of bestelauto van de zaak die willen laten
+  zien dat ze niet meer dan 500 km per jaar privé rijden. Werknemers hebben dat bewijs nodig voor hun
+  Verklaring geen privégebruik auto. Rijd je zakelijk met je eigen auto, dan houd je zo je zakelijke
+  kilometers bij. Wie nu een rittenregistratie in Excel of op papier bijhoudt, stuurt voortaan na elke
+  rit één WhatsApp-bericht.</p>
+</section>
+
+<section class="wrap">
   <h2>Wat je krijgt</h2>
   <div class="grid">
     <div class="card"><h3>Alle verplichte velden</h3><p>Per rit: datum, begin- en eindstand, vertrek- en aankomstadres, privé of zakelijk, en de route als die afwijkt van je gebruikelijke.</p></div>
@@ -79,6 +88,14 @@ $head_meta
   $signup_block
 </section>
 
+<section class="wrap">
+  <h2>Meer over rittenregistratie</h2>
+  <div class="grid">
+    <a class="card link" href="/rittenregistratie-eisen"><h3>Wat moet erin?</h3><p>De eisen van de Belastingdienst: de velden per rit, wanneer je registratie sluitend is, de 500 km privé en hoe lang je bewaart.</p></a>
+    <a class="card link" href="/rittenregistratie-excel"><h3>Rittenregistratie in Excel</h3><p>Liever zelf bijhouden? Download ons gratis Excel-sjabloon met de verplichte kolommen.</p></a>
+  </div>
+</section>
+
 <section id="vragen" class="wrap faq">
   <h2>Vragen</h2>
   <details><summary>Waarom betaal ik eerst € $mandate_nl?</summary><p>Met die betaling geef je via iDEAL of creditcard een machtiging, zodat het abonnement na de proefperiode automatisch kan worden afgeschreven. Je bank toont het als een betaling aan Du7 Technology Services via Mollie.</p></details>
@@ -91,7 +108,7 @@ $head_meta
 
 <footer class="wrap foot">
   <p><a class="du7" href="https://du7.dev"><img src="/static/favicon.svg" width="18" height="18" alt="">RittenRegistratie-bot is een dienst van Du7 Technology Services</a> · $company_line</p>
-  <p><a href="/voorwaarden">Voorwaarden</a> · <a href="/privacy">Privacy</a> · <a href="/herroeping">Herroeping</a> · <a href="/opzeggen">Abonnement opzeggen</a> · <a href="mailto:$support_email">$support_email</a></p>
+  <p><a href="/rittenregistratie-eisen">Eisen rittenregistratie</a> · <a href="/rittenregistratie-excel">Rittenregistratie in Excel</a> · <a href="/voorwaarden">Voorwaarden</a> · <a href="/privacy">Privacy</a> · <a href="/herroeping">Herroeping</a> · <a href="/opzeggen">Abonnement opzeggen</a> · <a href="mailto:$support_email">$support_email</a></p>
 </footer>
 </body>
 </html>

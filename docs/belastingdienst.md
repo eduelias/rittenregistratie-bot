@@ -24,6 +24,15 @@ has one column per field and nothing else:
 Note: a there-and-back visit counts as **2 trips** (heenreis + terugreis), each
 its own row.
 
+For employees and DGAs with a company car, the employer manual (Handboek
+Loonheffingen 2026, §23.3.18) also asks for a **trip number per day** and, when
+several people drive the car, **who drove**. The bot's export does not have
+these columns yet; the free template on rrbot.nl/rittenregistratie-excel does.
+
+The public guide rrbot.nl/rittenregistratie-eisen
+(`src/rittenregistratie/site/rittenregistratie-eisen.html`) summarises the rules
+with a source link per rule, checked on 2026-11-02.
+
 > Always verify the current, exact requirements on the official Belastingdienst
 > website before relying on any trip log for a declaration. This document is a
 > convenience summary, not tax advice.
