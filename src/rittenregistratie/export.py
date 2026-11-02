@@ -168,7 +168,7 @@ class ExportService:
         out_dir.mkdir(parents=True, exist_ok=True)
         # cars.yaml is read now, not at startup: admin commands change phones.
         car = CarRegistry(load_yaml_file(self.settings.cars_file)).get(car_id)
-        path = ExcelWriter(out_dir, car_id).write_all(year, [raw_to_trip(r, car) for r in rows])
+        path = ExcelWriter(out_dir, car_id).write_all(year, [raw_to_trip(r, car) for r in rows], car=car)
 
         bus.emit(EXPORT_POST_GENERATE, {
             "car_id": car_id, "year": year, "path": str(path), "rows": len(rows),

@@ -630,6 +630,9 @@ async def _run_export(sender: str, req: ExportRequest) -> None:
             await tell(t("export.upload_failed", year=year))
             continue
         caption = t("export.caption", label=req.car.label, year=year, rows=result.rows)
+        car = _engine.cars.get(req.car.car_id) or req.car
+        if not (car.plate and car.make_model):
+            caption += t("export.details_hint")
         if result.handlers:
             caption += t("export.plugins", n=result.handlers, s="s" if result.handlers != 1 else "")
         sent = await whatsapp.send_document(

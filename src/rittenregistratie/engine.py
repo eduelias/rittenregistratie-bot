@@ -14,11 +14,11 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .cars import ActiveCarStore, Car, CarRegistry, normalize_phone
+from .cars import ActiveCarStore, Car, CarRegistry, normalize_phone, set_car_details_yaml
 from .config import Settings, load_yaml, save_location
 from .events import EventBus, load_event_plugins
 from .i18n import Key, LanguageStore, render_parts, set_default, t
@@ -57,6 +57,32 @@ _HAS_LETTER_RE = re.compile(r"[^\W\d_]")
 _HELP_WORDS = ("start", "help", "hulp", "hallo", "hoi", "hi", "hello")
 # Dutch spellings of the car commands.
 _CAR_ALIASES = {"auto": "car", "autos": "cars", "auto's": "cars", "naam": "name"}
+# Car details the Belastingdienst asks for (handle_car_details): command -> field.
+_DETAIL_COMMANDS = [
+    (re.compile(r"^/?(?:kenteken|plate|number plate)(?:\s+(.+))?$", re.I), "plate"),
+    (re.compile(r"^/?(?:merk|make)(?:\s+(.+))?$", re.I), "make_model"),
+    (re.compile(r"^/?(?:in gebruik (?:sinds|vanaf)|in use (?:since|from))(?:\s+(.+))?$", re.I),
+     "in_use_from"),
+    (re.compile(r"^/?(?:in gebruik tot|in use until)(?:\s+(.+))?$", re.I), "in_use_until"),
+    (re.compile(r"^/?(?:autogegevens|car details)$", re.I), "show"),
+]
+_PLATE = re.compile(r"^[A-Z0-9]{1,4}(?:-?[A-Z0-9]{1,4}){1,3}$")
+
+
+def parse_day(text: str) -> Optional[date]:
+    """``1-3-2026``, ``01/03/2026``, ``2026-03-01``, ``vandaag``/``today``."""
+    text = (text or "").strip().lower()
+    if text in ("vandaag", "today"):
+        return date.today()
+    m = re.fullmatch(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})", text)
+    try:
+        if m:
+            return date(int(m[3]), int(m[2]), int(m[1]))
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
 # Commands that request a spreadsheet: "excel", "excel 2025", "excel all",
 # and for admins "excel <car_id> [year|all]".
 _EXPORT_WORDS = frozenset({"excel", "export", "xlsx", "sheet", "spreadsheet"})
@@ -232,9 +258,60 @@ class Engine:
                 return car, parts[1]
         return None, text
 
+    def handle_car_details(self, text: str, sender: str) -> Optional[Reply]:
+        """``kenteken``, ``merk``, ``in gebruik sinds/tot`` and
+        ``autogegevens`` (English: ``plate``, ``make``, ``in use since/until``,
+        ``car details``) for the sender's (active) car. A bare command or
+        ``autogegevens`` shows the details; ``-`` clears one. None if ``text``
+        is not one of these commands."""
+        text = (text or "").strip()
+        for rx, field in _DETAIL_COMMANDS:
+            m = rx.match(text)
+            if m:
+                break
+        else:
+            return None
+        car = self.resolve_car(sender)
+        value = (m.group(1) or "").strip() if m.groups() else ""
+        if field == "show" or not value:
+            return Reply(self._details_text(car))
+        if value == "-":
+            value = ""
+        elif field == "plate":
+            value = re.sub(r"\s+", "", value).upper()
+            if not _PLATE.match(value):
+                return Reply(t("cardet.bad_plate"))
+        elif field == "make_model":
+            value = " ".join(value.split())[:60]
+        else:
+            day = parse_day(value)
+            if day is None:
+                return Reply(t("cardet.bad_date"))
+            value = day.isoformat()
+            start = value if field == "in_use_from" else car.in_use_from
+            end = value if field == "in_use_until" else car.in_use_until
+            if start and end and end < start:
+                return Reply(t("cardet.order"))
+        set_car_details_yaml(self.settings.cars_file, car.car_id, **{field: value})
+        self.reload_cars()
+        return Reply(t("cardet.saved") + "\n\n" + self._details_text(self.cars.get(car.car_id)))
+
+    @staticmethod
+    def _details_text(car: Car) -> str:
+        from .i18n import date_text
+        unset = t("cardet.unset")
+        start = date_text(car.in_use_from) if car.in_use_from else unset
+        end = date_text(car.in_use_until) if car.in_use_until else t("cardet.now")
+        return t("cardet.show", label=car.label, plate=car.plate or unset,
+                 make=car.make_model or unset, start=start, end=end)
+
     def handle_user_command(self, text: str, sender: str) -> Optional[str]:
         """``cars`` lists the sender's cars; ``car <id|label>`` picks the
-        active one. None if ``text`` is not one of these commands."""
+        active one; the car details (:meth:`handle_car_details`). None if
+        ``text`` is not one of these commands."""
+        details = self.handle_car_details(text, sender)
+        if details is not None:
+            return details
         parts = (text or "").strip().split()
         if not parts:
             return None
