@@ -78,6 +78,7 @@ nav a.btn { color: #fff; }
 .form { display: grid; gap: 14px; max-width: 520px; background: var(--card); border: 1px solid var(--line);
         border-radius: 14px; padding: 24px; }
 .form label { display: grid; gap: 4px; font-weight: 600; font-size: .95rem; }
+.form label small { font-weight: 400; color: var(--muted); }
 .form input:not([type=radio]):not([type=checkbox]) { font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
 .form fieldset { border: 0; padding: 0; margin: 0; }
 .form details.optional { display: grid; gap: 10px; }

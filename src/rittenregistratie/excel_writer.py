@@ -20,12 +20,17 @@ adds for employees and DGAs with a company car:
 - Bestuurder — who drove, only filled when several people drive the car
 
 No other per-trip columns are added.
+
+The Belastingdienst also asks for the car itself: make and type, number plate
+and the period it was available. Those are on a second sheet, "Auto"
+(:func:`car_sheet`), from the car's details in cars.yaml.
 """
 from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
-from typing import List
+from datetime import date
+from typing import List, Optional
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
@@ -94,9 +99,10 @@ class ExcelWriter:
             trip.driver,
         ]
 
-    def write_all(self, year: int, trips: List[Trip]) -> Path:
+    def write_all(self, year: int, trips: List[Trip], car=None) -> Path:
         """Write a fresh workbook for ``year`` holding exactly ``trips``, in
-        the given order (which numbers each day's trips).
+        the given order (which numbers each day's trips), plus the car's
+        details on the "Auto" sheet when ``car`` (a cars.Car) is given.
 
         Replaces any existing file for that year. Used by on-demand export.
         """
@@ -109,6 +115,8 @@ class ExcelWriter:
         for trip in trips:
             per_day[trip.date.date()] += 1
             ws.append(self._row(trip, per_day[trip.date.date()]))
+        if car is not None:
+            car_sheet(wb, car, year, trips)
         wb.save(path)
         return path
 
@@ -120,6 +128,37 @@ class ExcelWriter:
         ws.append(self._row(trip, number))
         wb.save(path)
         return path
+
+
+def _nl_date(iso: str) -> str:
+    return date.fromisoformat(iso).strftime("%d-%m-%Y")
+
+
+def car_sheet(wb: Workbook, car, year: int, trips: List[Trip]) -> None:
+    """The "Auto" sheet: what the Belastingdienst asks about the car. Details
+    not given yet say how to give them (the bot takes Dutch and English)."""
+    from openpyxl.styles import Alignment, Font
+
+    ws = wb.create_sheet("Auto")
+    ws.column_dimensions["A"].width = 24
+    ws.column_dimensions["B"].width = 60
+    missing = "niet opgegeven; stuur '{}' naar de bot"
+    days = sorted(t.date.date() for t in trips)
+    rows = [
+        ("Auto", car.label),
+        ("Kenteken", car.plate or missing.format("kenteken 12-ABC-3")),
+        ("Merk en type", car.make_model or missing.format("merk Volkswagen Golf")),
+        ("In gebruik vanaf", _nl_date(car.in_use_from) if car.in_use_from
+         else missing.format("in gebruik sinds 1-1-2026")),
+        ("In gebruik tot", _nl_date(car.in_use_until) if car.in_use_until else "nog in gebruik"),
+        ("Jaar", year),
+        ("Ritten in dit overzicht", f"{len(trips)}, van {days[0]:%d-%m-%Y} t/m {days[-1]:%d-%m-%Y}"
+         if days else "0"),
+    ]
+    for label, value in rows:
+        ws.append([label, value])
+        ws.cell(ws.max_row, 1).font = Font(bold=True)
+        ws.cell(ws.max_row, 2).alignment = Alignment(horizontal="left")
 
 
 # Explanation per column on the template's "Uitleg" sheet (rrbot.nl/rittenregistratie-excel).

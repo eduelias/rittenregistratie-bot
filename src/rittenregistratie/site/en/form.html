@@ -4,6 +4,8 @@
     <label>Email address<input name="email" type="email" required autocomplete="email"></label>
     <label>WhatsApp number<input name="phone" type="tel" required placeholder="+31 6 12345678" autocomplete="tel"></label>
     <label>Name of your car<input name="car_label" required placeholder="e.g. Golf or 12-ABC-3"></label>
+    <label>Number plate <small>(optional, the Belastingdienst asks for it)</small><input name="plate" maxlength="12" placeholder="12-ABC-3" autocapitalize="characters"></label>
+    <label>Make and model <small>(optional)</small><input name="make_model" maxlength="60" placeholder="Volkswagen Golf"></label>
     <label>Current odometer reading (km)<input name="seed_odometer" inputmode="numeric" pattern="[0-9 .]*" required placeholder="45192"></label>
     <label>Address where your first trip starts<input name="seed_address" required placeholder="Dorpsstraat 1, Utrecht" autocomplete="street-address"></label>
     <details class="optional"><summary>Invoice in your company's name? (optional)</summary>

@@ -138,6 +138,9 @@ class Signup:
     # The website language the customer signed up in (nl | en): the bot
     # speaks it to them from the start, and Mollie's checkout uses it.
     lang: str = "nl"
+    # Optional at signup; the car's number plate and make/type (cars.py).
+    plate: str = ""
+    make_model: str = ""
 
     def note(self, text: str) -> None:
         self.events.append(f"{datetime.now().isoformat(timespec='seconds')} {text}")
@@ -333,6 +336,8 @@ class Billing:
         lang = "en" if form.get("lang") == "en" else "nl"
         company = " ".join((form.get("company") or "").split())
         billing_address = " ".join((form.get("billing_address") or "").split())
+        plate = re.sub(r"\s+", "", form.get("plate") or "").upper()
+        make_model = " ".join((form.get("make_model") or "").split())
         if not name:
             raise SignupError("Vul je naam in.", "Enter your name.")
         if not _EMAIL_RE.match(email):
@@ -350,6 +355,9 @@ class Billing:
                               "Enter the address where your first trip starts.")
         if plan not in PLANS:
             raise SignupError("Kies maandelijks of jaarlijks.", "Choose monthly or yearly.")
+        if plate and not re.fullmatch(r"[A-Z0-9]{1,4}(?:-?[A-Z0-9]{1,4}){1,3}", plate):
+            raise SignupError("Dat lijkt geen kenteken. Bijvoorbeeld: 12-ABC-3.",
+                              "That doesn't look like a number plate. For example: 12-ABC-3.")
         if form.get("terms") not in ("on", "yes", "true", "1"):
             raise SignupError("Ga akkoord met de voorwaarden om verder te gaan.",
                               "Accept the terms to continue.")
@@ -361,6 +369,7 @@ class Billing:
             car_label=label[:60], seed_odometer=int(odo_raw), seed_address=address[:200],
             plan=plan, created_at=datetime.now().isoformat(timespec="seconds"),
             company=company[:100], billing_address=billing_address[:200], lang=lang,
+            plate=plate[:12], make_model=make_model[:60],
         )
 
     async def start(self, form: Dict[str, str]) -> str:
@@ -496,7 +505,7 @@ class Billing:
             self.settings.cars_file, car_id, signup.car_label, signup.seed_address,
             signup.seed_odometer, signup.phone,
             event_plugins=[], cap_plugin=self.settings.subscriber_cap_plugin,
-            subscription=signup.id,
+            subscription=signup.id, plate=signup.plate, make_model=signup.make_model,
         )
         self.engine.reload_cars()
         return car_id
@@ -814,7 +823,7 @@ class Billing:
                         self.settings.cars_file, signup.car_id, signup.car_label,
                         signup.seed_address, signup.seed_odometer, signup.phone,
                         event_plugins=[], cap_plugin=self.settings.subscriber_cap_plugin,
-                        subscription=signup.id,
+                        subscription=signup.id, plate=signup.plate, make_model=signup.make_model,
                     )
                     self.engine.reload_cars()
                 else:

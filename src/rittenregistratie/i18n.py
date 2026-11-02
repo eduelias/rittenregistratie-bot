@@ -171,6 +171,8 @@ CATALOG: Dict[str, tuple] = {
         "'maandelijks' of 'jaarlijks' (overstappen).\n"
         "'factuur' stuurt je laatste factuur, 'facturen' toont ze allemaal, "
         "'factuurgegevens' je bedrijfsnaam en factuuradres.\n"
+        "'autogegevens' toont kenteken, merk en type en sinds wanneer je de auto hebt; de "
+        "Belastingdienst vraagt ze.\n"
         "Send 'english' for English.",
         "Welcome to RittenRegistratie ({label}).\n"
         "After every trip, send your odometer reading and destination:\n"
@@ -183,6 +185,8 @@ CATALOG: Dict[str, tuple] = {
         "'monthly' or 'yearly' (switch plan).\n"
         "'invoice' sends your latest invoice, 'invoices' lists them all, "
         "'billing details' shows your company name and billing address.\n"
+        "'car details' shows the number plate, make and model and since when you have the car; "
+        "the Belastingdienst asks for them.\n"
         "Stuur 'nederlands' voor Nederlands."),
     "car.unknown_list": ("Onbekende auto '{hint}'. Jouw auto's: {cars}.",
                          "Unknown car '{hint}'. Your cars: {cars}."),
@@ -527,6 +531,30 @@ CATALOG: Dict[str, tuple] = {
     "mandate.card_tail": ("{label} eindigend op {tail}", "{label} ending in {tail}"),
     "mandate.unknown": ("onbekend", "unknown"),
     "mandate.pending": (" (wordt nog verwerkt)", " (still being processed)"),
+
+    # --- car details (engine.handle_car_details) -------------------------------------
+    "cardet.show": ("Gegevens van {label}\nKenteken: {plate}\nMerk en type: {make}\n"
+                    "In gebruik: {start} t/m {end}\n"
+                    "De Belastingdienst vraagt deze gegevens bij je rittenregistratie; ze staan op het "
+                    "tabblad Auto van je Excel. Wijzigen: 'kenteken 12-ABC-3', 'merk Volkswagen Golf', "
+                    "'in gebruik sinds 1-1-2026' of 'in gebruik tot 31-12-2026'; '-' wist het.",
+                    "Details of {label}\nNumber plate: {plate}\nMake and model: {make}\n"
+                    "In use: {start} to {end}\n"
+                    "The Belastingdienst asks for these with your trip log; they're on the Auto sheet "
+                    "of your Excel. Change: 'plate 12-ABC-3', 'make Volkswagen Golf', "
+                    "'in use since 1-1-2026' or 'in use until 31-12-2026'; '-' clears it."),
+    "cardet.unset": ("niet opgegeven", "not given"),
+    "cardet.now": ("nu", "now"),
+    "cardet.saved": ("Opgeslagen.", "Saved."),
+    "cardet.bad_plate": ("Dat lijkt geen kenteken. Bijvoorbeeld: kenteken 12-ABC-3.",
+                         "That doesn't look like a number plate. For example: plate 12-ABC-3."),
+    "cardet.bad_date": ("Dat is geen datum. Gebruik bijvoorbeeld 1-3-2026.",
+                        "That isn't a date. Use for example 1-3-2026."),
+    "cardet.order": ("De einddatum ligt voor de begindatum.", "The end date is before the start date."),
+    "export.details_hint": ("\nTip: de Belastingdienst vraagt ook het kenteken en merk en type. "
+                            "Stuur 'kenteken 12-ABC-3' en 'merk Volkswagen Golf'.",
+                            "\nTip: the Belastingdienst also asks for the number plate and make and "
+                            "model. Send 'plate 12-ABC-3' and 'make Volkswagen Golf'."),
 
     # --- invoices (invoices.py) -------------------------------------------------------
     "inv.caption": ("Factuur {number}: € {amount}, {start} t/m {end}.",

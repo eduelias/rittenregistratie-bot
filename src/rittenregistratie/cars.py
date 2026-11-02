@@ -66,6 +66,13 @@ class Car:
     subscription: Optional[str] = None
     # Optional phone -> name, shown as Bestuurder in the export.
     drivers: Dict[str, str] = field(default_factory=dict)
+    # What the Belastingdienst asks about the car itself, shown on the export's
+    # "Auto" sheet: number plate, make and type, and the period it was available
+    # (ISO dates; empty = not given / still in use).
+    plate: str = ""
+    make_model: str = ""
+    in_use_from: str = ""
+    in_use_until: str = ""
 
     def driver(self, phone: str) -> str:
         """Who drove, for the export's Bestuurder column: the name from
@@ -105,6 +112,7 @@ class CarRegistry:
                 drivers={normalize_phone(str(p)): str(n).strip()
                          for p, n in (val.get("drivers") or {}).items()
                          if normalize_phone(str(p)) and str(n).strip()},
+                **{k: str(val.get(k) or "").strip() for k in CAR_DETAILS},
             )
             self._cars[car_id] = car
             for phone in dict.fromkeys(car.phones):  # de-duplicate, keep order
@@ -149,6 +157,26 @@ class CarRegistry:
 
 # --- cars.yaml editing (used by admin commands) ------------------------------
 
+# Car details a phone may set over WhatsApp (engine.handle_car_details).
+CAR_DETAILS = ("plate", "make_model", "in_use_from", "in_use_until")
+
+
+def set_car_details_yaml(path: Path, car_id: str, **details: Optional[str]) -> None:
+    """Set (or with "" remove) details of one car; None leaves a field alone."""
+    data = _load(path)
+    if car_id not in data:
+        raise ValueError(f"Unknown car '{car_id}'.")
+    entry = data[car_id] or {}
+    for key, value in details.items():
+        if key not in CAR_DETAILS or value is None:
+            continue
+        if value:
+            entry[key] = value
+        else:
+            entry.pop(key, None)
+    data[car_id] = entry
+    _save(path, data)
+
 def _load(path: Path) -> dict:
     if not path.exists():
         return {}
@@ -166,9 +194,10 @@ def add_car_to_yaml(
     path: Path, car_id: str, label: str, seed_address: str,
     seed_odometer: int, phone: str,
     event_plugins: Optional[List[str]] = None, cap_plugin: Optional[str] = None,
-    subscription: Optional[str] = None,
+    subscription: Optional[str] = None, **details: str,
 ) -> None:
-    """Add a new car for ``phone``. The phone may already own other cars."""
+    """Add a new car for ``phone``. The phone may already own other cars.
+    ``details``: any of :data:`CAR_DETAILS` (empty ones are left out)."""
     data = _load(path)
     if car_id in data:
         raise ValueError(f"Car id '{car_id}' already exists.")
@@ -187,6 +216,7 @@ def add_car_to_yaml(
         entry["cap_plugin"] = cap_plugin
     if subscription:
         entry["subscription"] = subscription
+    entry.update({k: v for k, v in details.items() if k in CAR_DETAILS and v})
     data[car_id] = entry
     _save(path, data)
 

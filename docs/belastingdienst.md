@@ -40,6 +40,15 @@ was added. Trips logged before that, and trips the car logged itself (vehicle
 telemetry), have no sender, so their Bestuurder stays empty rather than being
 guessed. A car with one phone never fills it.
 
+The Belastingdienst also asks for the car itself: **make and type, number
+plate and the period** the car was used. Each export has a second sheet,
+**Auto**, with those from the car's `plate`, `make_model`, `in_use_from` and
+`in_use_until` in `cars.yaml`. The driver sets them over WhatsApp (`kenteken`,
+`merk`, `in gebruik sinds`, `in gebruik tot`, `autogegevens`; English `plate`,
+`make`, `in use since/until`, `car details`); plate and make can also be given
+at signup. A detail that is missing says on the sheet how to give it, and the
+export message reminds the driver while plate or make is missing.
+
 The public guide rrbot.nl/rittenregistratie-eisen
 (`src/rittenregistratie/site/rittenregistratie-eisen.html`) summarises the rules
 with a source link per rule, checked on 2026-11-02.
