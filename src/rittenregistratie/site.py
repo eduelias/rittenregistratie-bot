@@ -107,6 +107,13 @@ def company_facts(line: str) -> dict:
     return out
 
 
+def dotted(line: str) -> str:
+    """``RIT_COMPANY_LINE`` keeps ``·`` between its parts (company_facts and
+    the invoices split on it); shown, the parts read "like. this."."""
+    parts = [p.strip() for p in line.split("·") if p.strip()]
+    return ". ".join(p[:1].upper() + p[1:] for p in parts)
+
+
 def _read(name: str) -> str:
     return (SITE_DIR / name).read_text(encoding="utf-8")
 
@@ -210,7 +217,7 @@ def build_router(settings: Settings, billing: Optional[Billing], *,
             "mandate_nl": _nl(settings.mandate_amount),
             "trial_days": str(settings.trial_days),
             "support_email": html.escape(settings.support_email),
-            "company_line": html.escape(settings.company_line),
+            "company_line": html.escape(dotted(settings.company_line)),
             "retention_days": str(settings.retention_days),
         }
         v.update(extra)
@@ -286,7 +293,7 @@ def build_router(settings: Settings, billing: Optional[Billing], *,
         return HTMLResponse(
             Template(_read("page.html")).safe_substitute(values(
                 title=html.escape(title), body=filled, robots=robots, head_extra=head_extra, nav=nav,
-                head_meta=head_meta(f"{title} · {NAME}", path, description),
+                head_meta=head_meta(f"{title}. {NAME}", path, description),
             )),
             status_code=status,
         )

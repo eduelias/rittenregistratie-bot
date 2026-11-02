@@ -522,7 +522,7 @@ def test_admin_alerts_use_the_template_until_the_admin_writes(app, monkeypatch):
     asyncio.run(main._alert(ADMIN, "Nieuwe abonnee: X\nregel 2", event="nieuwe abonnee",
                             subject="31612345678"))
     assert templates[-1] == (ADMIN, "subscriber_event",
-                             ["nieuwe abonnee", "31612345678", "Nieuwe abonnee: X · regel 2"], "nl")
+                             ["nieuwe abonnee", "31612345678", "Nieuwe abonnee: X. regel 2"], "nl")
     client.post("/webhook", json=_wa("ping", ADMIN))        # the admin writes: window open
     asyncio.run(main._alert(ADMIN, "Nieuwe abonnee: Y"))
     assert texts[-1] == (ADMIN, "Nieuwe abonnee: Y") and len(templates) == 1

@@ -55,8 +55,8 @@ _window = InboundWindow(_settings.last_inbound_file)
 
 def _one_line(text: str, limit: int) -> str:
     """Template parameters may not hold newlines, tabs or runs of spaces."""
-    return re.sub(r"\s{2,}", " ", " · ".join(
-        part.strip() for part in str(text).splitlines() if part.strip()))[:limit] or "-"
+    return re.sub(r"\s{2,}", " ", ". ".join(
+        part.strip().rstrip(".") for part in str(text).splitlines() if part.strip()))[:limit] or "-"
 
 
 async def _alert(phone: str, text: str, event: str = "", subject: str = "") -> bool:
@@ -199,7 +199,7 @@ async def _invoice_command(sender: str, action: str, arg: str) -> None:
         mine = _invoicing.store.for_phone(sender)
         if action == "list":
             reply = "\n".join([t("inv.list")] + [
-                f"{i.number} · {date_text(i.issued)} · € {money(i.total)}" for i in mine[-24:]
+                f"{i.number}. {date_text(i.issued)}. € {money(i.total)}" for i in mine[-24:]
             ] + [t("inv.list_hint")]) if mine else t("inv.none")
         else:
             invoice = (next((i for i in mine if i.number.lower() == arg.lower()), None) if arg

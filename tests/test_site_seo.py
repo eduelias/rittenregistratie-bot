@@ -70,7 +70,7 @@ def test_titles_and_descriptions_fit_search_results(client):
         assert kind in home, kind
     for path, (_, title, description) in GUIDES.items():
         assert len(description) <= 155, path
-        assert len(f"{title} · RittenRegistratie-bot") <= 70, path
+        assert len(f"{title}. RittenRegistratie-bot") <= 70, path
         page = c.get(path).text
         assert f'<link rel="canonical" href="https://rrbot.example{path}">' in page
         assert 'content="index"' in page and page.count("<h1") == 1
@@ -89,6 +89,9 @@ def test_organization_structured_data(client):
     assert any(n["@type"] == "WebSite" and n["name"] == "RittenRegistratie-bot" for n in ld["@graph"])
     # Placeholders are left out rather than published.
     assert company_facts("KvK [nummer] · btw [nummer]") == {}
+    from rittenregistratie.site import dotted
+    assert dotted("Buitenhof 128, 1354 GT Almere · KvK 91476003 · btw NL004896802B29") == \
+        "Buitenhof 128, 1354 GT Almere. KvK 91476003. Btw NL004896802B29"
 
 
 def test_excel_template_download(client):
