@@ -80,7 +80,7 @@ EN_GUIDES = {
 # Dutch page -> its English counterpart: hreflang links and the NL/EN switch. A page
 # without a counterpart switches to the other language's homepage.
 PAIRS = {"/": "/en/", "/rittenregistratie-eisen": "/en/rittenregistratie-requirements",
-         "/voorwaarden": "/en/terms", "/privacy": "/en/privacy"}
+         "/voorwaarden": "/en/terms", "/privacy": "/en/privacy", "/opzeggen": "/en/cancel"}
 _PAIRS_BACK = {en: nl for nl, en in PAIRS.items()}
 # Pages in the sitemap besides the guides. /herroeping and the cancel pages stay out
 # (noindex); so does everything behind a signup.
@@ -399,7 +399,7 @@ def build_router(settings: Settings, billing: Optional[Billing], *,
 
     @router.get("/robots.txt", response_class=PlainTextResponse)
     async def robots() -> str:
-        lines = ["User-agent: *", "Disallow: /aanmelden", "Disallow: /opzeggen",
+        lines = ["User-agent: *", "Disallow: /aanmelden", "Disallow: /opzeggen", "Disallow: /en/cancel",
                  "Disallow: /billing/", "Allow: /"]
         if base:
             lines.append(f"Sitemap: {base}/sitemap.xml")
@@ -625,95 +625,142 @@ def build_router(settings: Settings, billing: Optional[Billing], *,
         return Response(status_code=200)
 
     # --- cancel button (opzegknop): as easy as signing up -----------------
+    # Dutch on /opzeggen, English on /en/cancel; the same codes and limits.
     codes = CancelCodes()
     cancel_limiter = SignupLimiter(settings.signup_limit_per_ip, settings.signup_limit_total)
+    CANCEL = {
+        "nl": {
+            "path": "/opzeggen", "title": "Abonnement opzeggen",
+            "intro": "<p>Vul het WhatsApp-nummer van je abonnement in. We sturen je via WhatsApp een "
+                     "code; daarmee zeg je meteen op. Er wordt daarna niets meer afgeschreven en de bot "
+                     "werkt tot het einde van je betaalde periode of proefperiode.</p>",
+            "number": "WhatsApp-nummer", "placeholder": "06 12345678", "send": "Stuur mij een code",
+            "or_bot": 'Je kunt ook <code>opzeggen</code> naar de bot sturen.',
+            "slow": '<h1>Even rustig aan</h1><p class="error">Te veel pogingen. Probeer het over een '
+                    'uur opnieuw.</p>',
+            "back": "Terug", "unknown": "Onbekend nummer.",
+            "sent": "Als dit nummer een abonnement heeft, hebben we je via WhatsApp een code van 6 "
+                    "cijfers gestuurd. Vul hem hieronder in. De code is 10 minuten geldig.",
+            "code": "Code", "confirm": "Abonnement nu opzeggen",
+            "no_code": 'Geen code ontvangen? <a href="/opzeggen">Probeer het opnieuw</a>, of stuur '
+                       '<code>opzeggen</code> naar de bot.',
+            "wrong": "Die code klopt niet of is verlopen.",
+            "failed": '<h1>Er ging iets mis</h1><p class="error">Opzeggen lukte nu niet. Probeer het '
+                      'later opnieuw of stuur <code>opzeggen</code> naar de bot.</p>',
+            "until": " De bot werkt nog tot en met <strong>{date}</strong>; stuur voor die datum "
+                     "<code>excel all</code> naar de bot om al je ritten te bewaren.",
+            "done": "<h1>Je abonnement is opgezegd</h1><p>Er wordt niets meer afgeschreven.{until}</p>"
+                    "<p>Je krijgt deze bevestiging ook via WhatsApp. Bedacht? Stuur <code>opnieuw</code> "
+                    "naar de bot.</p>",
+        },
+        "en": {
+            "path": "/en/cancel", "title": "Cancel subscription",
+            "intro": "<p>Enter the WhatsApp number of your subscription. We send you a code on "
+                     "WhatsApp; with it you cancel straight away. Nothing is charged after that, and the "
+                     "bot keeps working until the end of your paid period or trial.</p>",
+            "number": "WhatsApp number", "placeholder": "+31 6 12345678", "send": "Send me a code",
+            "or_bot": 'You can also send <code>unsubscribe</code> to the bot.',
+            "slow": '<h1>Slow down a little</h1><p class="error">Too many attempts. Please try again in '
+                    'an hour.</p>',
+            "back": "Back", "unknown": "Unknown number.",
+            "sent": "If this number has a subscription, we've sent you a 6-digit code on WhatsApp. "
+                    "Enter it below. The code is valid for 10 minutes.",
+            "code": "Code", "confirm": "Cancel my subscription now",
+            "no_code": 'No code? <a href="/en/cancel">Try again</a>, or send <code>unsubscribe</code> '
+                       'to the bot.',
+            "wrong": "That code is wrong or has expired.",
+            "failed": '<h1>Something went wrong</h1><p class="error">Cancelling didn\'t work just now. '
+                      'Please try again later or send <code>unsubscribe</code> to the bot.</p>',
+            "until": " The bot keeps working until <strong>{date}</strong>; before then, send "
+                     "<code>excel all</code> to the bot to keep all your trips.",
+            "done": "<h1>Your subscription is cancelled</h1><p>Nothing more will be charged.{until}</p>"
+                    "<p>You'll get this confirmation on WhatsApp too. Changed your mind? Send "
+                    "<code>restart</code> to the bot.</p>",
+        },
+    }
 
-    def cancel_page(body: str, status: int = 200) -> HTMLResponse:
-        return page("Abonnement opzeggen", body, status, path="/opzeggen")
+    def cancel_page(lang: str, body: str, status: int = 200) -> HTMLResponse:
+        c = CANCEL[lang]
+        return page(c["title"], f"<h1>{c['title']}</h1>{body}" if not body.startswith("<h1>") else body,
+                    status, path=c["path"], lang=lang)
 
-    def code_form(phone: str, note: str = "") -> str:
+    def code_form(lang: str, phone: str, note: str = "") -> str:
+        c = CANCEL[lang]
         return (
-            "<h1>Abonnement opzeggen</h1>"
-            + (f'<p class="error">{html.escape(note)}</p>' if note else "")
-            + "<p>Als dit nummer een abonnement heeft, hebben we je via WhatsApp een code van 6 "
-            "cijfers gestuurd. Vul hem hieronder in. De code is 10 minuten geldig.</p>"
-            '<form method="post" action="/opzeggen/bevestig" class="form">'
+            (f'<p class="error">{html.escape(note)}</p>' if note else "")
+            + f"<p>{c['sent']}</p>"
+            + f'<form method="post" action="{c["path"]}/{"bevestig" if lang == "nl" else "confirm"}" '
+            'class="form">'
             f'<input type="hidden" name="phone" value="{html.escape(phone)}">'
-            '<label>Code<input name="code" inputmode="numeric" pattern="[0-9]{6}" '
+            f'<label>{c["code"]}<input name="code" inputmode="numeric" pattern="[0-9]{{6}}" '
             'maxlength="6" required autocomplete="one-time-code"></label>'
-            '<button class="btn" type="submit">Abonnement nu opzeggen</button></form>'
-            '<p class="fine">Geen code ontvangen? <a href="/opzeggen">Probeer het opnieuw</a>, '
-            "of stuur <code>opzeggen</code> naar de bot.</p>"
+            f'<button class="btn" type="submit">{c["confirm"]}</button></form>'
+            f'<p class="fine">{c["no_code"]}</p>'
         )
 
-    @router.get("/opzeggen", response_class=HTMLResponse)
-    async def cancel_start(request: Request) -> HTMLResponse:
-        count(request, "/opzeggen")
-        return cancel_page(
-            "<h1>Abonnement opzeggen</h1>"
-            "<p>Vul het WhatsApp-nummer van je abonnement in. We sturen je via WhatsApp een "
-            "code; daarmee zeg je meteen op. Er wordt daarna niets meer afgeschreven en de bot "
-            "werkt tot het einde van je betaalde periode of proefperiode.</p>"
-            '<form method="post" action="/opzeggen" class="form">'
-            '<label>WhatsApp-nummer<input name="phone" type="tel" required '
-            'placeholder="06 12345678" autocomplete="tel"></label>'
-            '<button class="btn" type="submit">Stuur mij een code</button></form>'
-            "<p class=\"fine\">Je kunt ook <code>opzeggen</code> naar de bot sturen.</p>"
-        )
+    def cancel_routes(lang: str) -> None:
+        c = CANCEL[lang]
+        confirm_path = f'{c["path"]}/{"bevestig" if lang == "nl" else "confirm"}'
 
-    @router.post("/opzeggen", response_class=HTMLResponse)
-    async def cancel_send(request: Request) -> HTMLResponse:
-        ip = request.client.host if request.client else ""
-        if not cancel_limiter.allow(ip):
-            return cancel_page('<h1>Even rustig aan</h1><p class="error">Te veel pogingen. '
-                               'Probeer het over een uur opnieuw.</p>', 429)
-        try:
-            phone = parse_phone((await _form(request)).get("phone", ""))
-        except _SignupError as exc:
-            return cancel_page(f'<h1>Abonnement opzeggen</h1><p class="error">{html.escape(str(exc))}</p>'
-                               '<p><a class="btn" href="/opzeggen">Terug</a></p>', 400)
-        # The same answer whether or not the number has a subscription, so the
-        # form does not tell strangers who is a customer.
-        if billing is not None and send_code is not None and billing.can_cancel(phone):
-            code = codes.issue(phone)
-            if code is not None:
-                try:
-                    await send_code(phone, code)
-                except Exception:  # pragma: no cover
-                    log.exception("cancel code could not be sent")
-        return cancel_page(code_form(phone))
+        async def start(request: Request) -> HTMLResponse:
+            count(request, c["path"])
+            return cancel_page(lang, (
+                c["intro"]
+                + f'<form method="post" action="{c["path"]}" class="form">'
+                f'<label>{c["number"]}<input name="phone" type="tel" required '
+                f'placeholder="{c["placeholder"]}" autocomplete="tel"></label>'
+                f'<button class="btn" type="submit">{c["send"]}</button></form>'
+                f'<p class="fine">{c["or_bot"]}</p>'))
 
-    @router.post("/opzeggen/bevestig", response_class=HTMLResponse)
-    async def cancel_confirm(request: Request) -> HTMLResponse:
-        form = await _form(request)
-        try:
-            phone = parse_phone(form.get("phone", ""))
-        except _SignupError:
-            return cancel_page('<h1>Abonnement opzeggen</h1><p class="error">Onbekend nummer.</p>', 400)
-        if billing is None or not codes.check(phone, form.get("code", "")):
-            return cancel_page(code_form(phone, "Die code klopt niet of is verlopen."), 400)
-        try:
-            reply = await billing.cancel(phone)
-        except MollieError:
-            log.exception("website cancel failed for %s", phone)
-            return cancel_page('<h1>Er ging iets mis</h1><p class="error">Opzeggen lukte nu niet. '
-                               'Probeer het later opnieuw of stuur <code>opzeggen</code> naar de bot.</p>', 502)
-        until = billing.access_until(phone)
-        if confirm_cancel is not None:
+        async def send(request: Request) -> HTMLResponse:
+            ip = request.client.host if request.client else ""
+            if not cancel_limiter.allow(ip):
+                return cancel_page(lang, c["slow"], 429)
             try:
-                await confirm_cancel(phone, reply, until)
-            except Exception:  # pragma: no cover
-                log.exception("cancel confirmation could not be sent")
-        from .i18n import date_text
-        when = (f" De bot werkt nog tot en met <strong>{date_text(until, 'nl')}</strong>; stuur "
-                "voor die datum <code>excel all</code> naar de bot om al je ritten te bewaren."
-                if until else "")
-        return cancel_page(
-            "<h1>Je abonnement is opgezegd</h1>"
-            f"<p>Er wordt niets meer afgeschreven.{when}</p>"
-            "<p>Je krijgt deze bevestiging ook via WhatsApp. Bedacht? Stuur <code>opnieuw</code> "
-            "naar de bot.</p>"
-        )
+                phone = parse_phone((await _form(request)).get("phone", ""))
+            except _SignupError as exc:
+                return cancel_page(lang, f'<p class="error">{html.escape(exc.text(lang))}</p>'
+                                   f'<p><a class="btn" href="{c["path"]}">{c["back"]}</a></p>', 400)
+            # The same answer whether or not the number has a subscription, so the
+            # form does not tell strangers who is a customer.
+            if billing is not None and send_code is not None and billing.can_cancel(phone):
+                code = codes.issue(phone)
+                if code is not None:
+                    try:
+                        await send_code(phone, code)
+                    except Exception:  # pragma: no cover
+                        log.exception("cancel code could not be sent")
+            return cancel_page(lang, code_form(lang, phone))
+
+        async def confirm(request: Request) -> HTMLResponse:
+            form = await _form(request)
+            try:
+                phone = parse_phone(form.get("phone", ""))
+            except _SignupError:
+                return cancel_page(lang, f'<p class="error">{c["unknown"]}</p>', 400)
+            if billing is None or not codes.check(phone, form.get("code", "")):
+                return cancel_page(lang, code_form(lang, phone, c["wrong"]), 400)
+            try:
+                reply = await billing.cancel(phone)
+            except MollieError:
+                log.exception("website cancel failed for %s", phone)
+                return cancel_page(lang, c["failed"], 502)
+            until = billing.access_until(phone)
+            if confirm_cancel is not None:
+                try:
+                    await confirm_cancel(phone, reply, until)
+                except Exception:  # pragma: no cover
+                    log.exception("cancel confirmation could not be sent")
+            from .i18n import date_text
+            when = c["until"].format(date=date_text(until, lang)) if until else ""
+            return cancel_page(lang, c["done"].format(until=when))
+
+        router.add_api_route(c["path"], start, methods=["GET"], response_class=HTMLResponse)
+        router.add_api_route(c["path"], send, methods=["POST"], response_class=HTMLResponse)
+        router.add_api_route(confirm_path, confirm, methods=["POST"], response_class=HTMLResponse)
+
+    cancel_routes("nl")
+    cancel_routes("en")
 
     return router
 
