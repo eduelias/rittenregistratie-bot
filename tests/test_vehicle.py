@@ -1,5 +1,6 @@
 """Vehicle-telemetry hooks: place resolution, auto-logging, naming, dedupe, HTTP."""
 import importlib
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -115,6 +116,25 @@ def test_ignored_when_not_above_last_and_gap_is_noted(settings):
     note = eng.exporter.trips_for_year("mercedes", 2026)[-1]["note"]
     assert "ignition on was 20070; 20 km before this trip are not covered" in note
     assert _rows(eng)[-1][1:3] == (20050, 20150)  # chain, not the ignition reading
+
+
+@pytest.mark.parametrize("start_odo,gap_note", [
+    (20030, False),   # stale: below the last reading (trips typed in meanwhile)
+    (0, False),       # Home Assistant's int(0) for an unavailable input_number
+    (20050, False),   # equal: no gap
+    (20060, True),    # above: 10 km really went unlogged
+    (20120, False),   # above the end reading: impossible, so not trusted
+])
+def test_gap_note_only_for_a_start_above_the_last_reading(settings, start_odo, gap_note):
+    eng = Engine(settings)
+    car = eng.cars.get("mercedes")
+    eng.handle_text("20050 spg", "31612345678", now=datetime(2026, 9, 3, 9, 0))
+    eng.handle_vehicle_trip(car, VehicleTripReport(end_odo=20100, start_odo=start_odo, zone="home"))
+    note = eng.exporter.trips_for_year("mercedes", 2026)[-1]["note"]
+    assert ("not covered" in note) is gap_note and not re.search(r"-\d", note)
+    if gap_note:
+        assert "ignition on was 20060; 10 km before this trip are not covered" in note
+    assert _rows(eng)[-1][1:3] == (20050, 20100)
 
 
 def test_manual_message_after_auto_trip_is_deduplicated(settings):

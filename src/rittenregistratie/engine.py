@@ -395,7 +395,12 @@ class Engine:
 
         name, address, is_private = self._place_for(car, report)
         note_bits = [f"auto-logged from {report.source or 'vehicle'}"]
-        if report.start_odo is not None and report.start_odo != state.last_odometer:
+        # Only a start reading above the last logged one says km went unlogged.
+        # One at or below it is stale (the car's feed lagged, or the trips were
+        # typed in meanwhile) and says nothing; one above the end reading can't
+        # be right either. Neither belongs in the append-only ledger.
+        if (report.start_odo is not None
+                and state.last_odometer < report.start_odo <= report.end_odo):
             gap = report.start_odo - state.last_odometer
             note_bits.append(
                 f"reading at ignition on was {report.start_odo}; {gap} km before this trip "
