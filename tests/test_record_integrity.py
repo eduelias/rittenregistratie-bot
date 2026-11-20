@@ -224,6 +224,7 @@ _report = st.builds(
 @given(steps=st.lists(st.one_of(_report, _message, _message), max_size=10))
 @example(steps=[f"{SEED + 50} Klant X", VehicleTripReport(end_odo=SEED + 100), "Main St 1, Utrecht"])
 @example(steps=[f"{SEED + 50} Klant X", VehicleTripReport(end_odo=SEED + 50), "Home"])
+@example(steps=[f"{SEED + 1} 0", "0\x1fA"])     # a control character in an address
 def test_no_sequence_of_messages_and_car_trips_breaks_the_record(tmp_path_factory, steps):
     tmp = tmp_path_factory.mktemp("prop")
     eng = _engine(tmp)

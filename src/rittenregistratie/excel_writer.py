@@ -33,6 +33,7 @@ from datetime import date
 from typing import List, Optional
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.worksheet.worksheet import Worksheet
 
 from .models import Trip, TripType
@@ -90,13 +91,13 @@ class ExcelWriter:
             trip.date.strftime("%Y-%m-%d"),
             trip.start_odo,
             trip.end_odo,
-            trip.start_address,
-            trip.end_address,
-            trip.route,  # only populated when the usual route was not taken
+            _text(trip.start_address),
+            _text(trip.end_address),
+            _text(trip.route),  # only populated when the usual route was not taken
             _pb(trip.trip_type),
             trip.private_detour_km or "",
             number,
-            trip.driver,
+            _text(trip.driver),
         ]
 
     def write_all(self, year: int, trips: List[Trip], car=None) -> Path:
@@ -130,6 +131,12 @@ class ExcelWriter:
         return path
 
 
+def _text(value: str) -> str:
+    """Excel refuses control characters. One pasted into an address would
+    otherwise block that year's export for good; the ledger keeps what was sent."""
+    return ILLEGAL_CHARACTERS_RE.sub("", value or "")
+
+
 def _nl_date(iso: str) -> str:
     return date.fromisoformat(iso).strftime("%d-%m-%Y")
 
@@ -156,7 +163,7 @@ def car_sheet(wb: Workbook, car, year: int, trips: List[Trip]) -> None:
          if days else "0"),
     ]
     for label, value in rows:
-        ws.append([label, value])
+        ws.append([label, _text(value) if isinstance(value, str) else value])
         ws.cell(ws.max_row, 1).font = Font(bold=True)
         ws.cell(ws.max_row, 2).alignment = Alignment(horizontal="left")
 
