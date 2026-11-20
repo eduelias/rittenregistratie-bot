@@ -21,15 +21,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "hypothesis>=6.100"]
 
 # Safe default plugin implementations shipped with the core.
 # Third-party / private packages register their own implementations under
 # these same entry-point groups to override or extend behaviour.
-[project.entry-points."rittenregistratie.odometer"]
-whatsapp_manual = "rittenregistratie.plugins.odometer_whatsapp:WhatsAppManualSource"
-mercedes_stub = "rittenregistratie.plugins.odometer_mercedes_stub:MercedesStubSource"
-
 [project.entry-points."rittenregistratie.trajectory"]
 google = "rittenregistratie.plugins.trajectory_google:GoogleDirectionsProvider"
 maps_link = "rittenregistratie.plugins.trajectory_link:MapsLinkProvider"

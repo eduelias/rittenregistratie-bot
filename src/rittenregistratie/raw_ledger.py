@@ -11,6 +11,7 @@ lines are never modified or removed.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -44,14 +45,19 @@ class RawLedger:
         line = json.dumps(asdict(trip), ensure_ascii=False, sort_keys=True)
         with self.path.open("a", encoding="utf-8") as fh:
             fh.write(line + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())  # the record must survive a power cut
 
     def read_all(self) -> List[RawTrip]:
         if not self.path.exists():
             return []
         out: List[RawTrip] = []
-        for line in self.path.read_text(encoding="utf-8").splitlines():
+        for n, line in enumerate(self.path.read_text(encoding="utf-8").splitlines(), start=1):
             line = line.strip()
             if not line:
                 continue
-            out.append(RawTrip(**json.loads(line)))
+            try:
+                out.append(RawTrip(**json.loads(line)))
+            except (ValueError, TypeError) as exc:
+                raise ValueError(f"{self.path.name} line {n} is not a trip: {exc}") from exc
         return out

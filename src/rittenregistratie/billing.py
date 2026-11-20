@@ -64,8 +64,10 @@ from typing import Awaitable, Callable, Dict, List, Optional, Tuple
 
 import httpx
 
-from .cars import add_car_to_yaml, normalize_phone, remove_car_from_yaml, slugify_car_id
-from .config import Settings, write_atomic
+from .cars import (
+    add_car_to_yaml, car_ids_on_disk, normalize_phone, remove_car_from_yaml, slugify_car_id,
+)
+from .config import MAX_ODOMETER, Settings, write_atomic
 from .i18n import Key, date_text, money, render_parts, set_current, t
 
 log = logging.getLogger("rittenregistratie.billing")
@@ -344,7 +346,7 @@ class Billing:
             raise SignupError("Geef je auto een naam, bijvoorbeeld het kenteken.",
                               "Give your car a name, for example its number plate.")
         odo_raw = re.sub(r"[.\s]", "", form.get("seed_odometer") or "")
-        if not odo_raw.isdigit() or not (0 <= int(odo_raw) <= 2_000_000):
+        if not odo_raw.isdigit() or not (0 <= int(odo_raw) <= MAX_ODOMETER):
             raise SignupError("Vul de huidige kilometerstand in (alleen cijfers).",
                               "Enter the current odometer reading (digits only).")
         if not address:
@@ -514,8 +516,7 @@ class Billing:
         the new number."""
         taken = {c.car_id for c in self.engine.cars.all()}
         taken.update(s.car_id for s in self.store.all() if s.car_id)
-        taken.update(p.name[len("raw-ledger-"):-len(".jsonl")]
-                     for p in self.settings.data_dir.glob("raw-ledger-*.jsonl"))
+        taken.update(car_ids_on_disk(self.settings.data_dir))
         return sorted(taken)
 
     async def _recurring(self, payment: dict) -> Optional[Signup]:

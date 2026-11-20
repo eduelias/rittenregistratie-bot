@@ -2,12 +2,10 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from openpyxl import load_workbook
 
 from rittenregistratie.config import Settings
 from rittenregistratie.engine import Engine
 from rittenregistratie.raw_ledger import RawLedger
-from rittenregistratie.rebuild import rebuild
 
 
 @pytest.fixture
@@ -52,18 +50,3 @@ def test_ledger_is_append_only(settings):
     # the original content is still a prefix of the file (nothing rewritten)
     assert second.startswith(first)
     assert second.count("\n") == 2
-
-
-def test_rebuild_reproduces_spreadsheet(settings, tmp_path):
-    eng = Engine(settings)
-    eng.handle_text("1040 Office", "31600000000", now=datetime(2026, 1, 5, 9, 0))
-    eng.handle_text("1090 Office", "31600000000", now=datetime(2026, 1, 6, 9, 0))
-    out = tmp_path / "rebuilt"
-    n = rebuild("car", settings.data_dir, out)
-    assert n == 2
-    ws = load_workbook(out / "trips-car-2026.xlsx").active
-    rows = [[ws.cell(r, c).value for c in range(1, 9)]
-            for r in range(2, ws.max_row + 1)]
-    assert rows[0][1] == 1000 and rows[0][2] == 1040  # begin/end odo
-    assert rows[1][1] == 1040 and rows[1][2] == 1090
-    assert rows[0][6] == "zakelijk"

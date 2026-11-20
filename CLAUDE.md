@@ -26,8 +26,7 @@ pyproject/tests/deploy, registers plugins against these entry points) and
   `rittenregistratie`.
 - Deps: `fastapi`, `uvicorn[standard]`, `httpx`, `openpyxl`, `pydantic(-settings)`,
   `PyYAML`. Dev extras: `pytest`, `pytest-asyncio`.
-- Plugins via setuptools entry points: `rittenregistratie.odometer`
-  (`whatsapp_manual` default, `mercedes_stub`), `rittenregistratie.trajectory`
+- Plugins via setuptools entry points: `rittenregistratie.trajectory`
   (`maps_link` default, `google`, `manual`), `rittenregistratie.privatecap`
   (`warn` default), `rittenregistratie.events` (no default; subscribers
   register a `register(bus)` callable).
@@ -41,7 +40,7 @@ cp config/.env.example .env      # WhatsApp creds, admin numbers, etc.
 pytest -q                        # tests/ (pythonpath=src, asyncio_mode=auto)
 uvicorn rittenregistratie.main:app --host 0.0.0.0 --port 8000
 python -m rittenregistratie.export <car_id> [year]
-python -m rittenregistratie.rebuild <car_id> [--out ./restore]   # plugin-free rebuild
+python -m rittenregistratie.export <car_id> [year] --no-plugins   # plugin-free export
 ```
 
 No ruff config here (unlike the private-plugins sibling) — CI runs pytest only.
@@ -100,7 +99,7 @@ No ruff config here (unlike the private-plugins sibling) — CI runs pytest only
 WhatsApp: `RIT_WHATSAPP_TOKEN/PHONE_NUMBER_ID/APP_SECRET/VERIFY_TOKEN/GRAPH_VERSION`.
 Access: `RIT_ALLOWED_SENDER`, `RIT_ADMIN_NUMBERS`, `RIT_ONBOARDING_ENABLED`,
 `RIT_MAX_USERS`. Behaviour: `RIT_REPLY_MODE`, `RIT_GOOGLE_MAPS_API_KEY`.
-Plugins: `RIT_ODOMETER_SOURCE`, `RIT_TRAJECTORY_PROVIDER`,
+Plugins: `RIT_TRAJECTORY_PROVIDER`,
 `RIT_PRIVATE_CAP_PLUGIN(_OVERRIDE)`, `RIT_PRIVATE_CAP_OVERRIDE_NUMBERS`,
 `RIT_EVENT_PLUGINS`. Compliance/seed: `RIT_PRIVATE_CAP_KM`,
 `RIT_SEED_ADDRESS/ODOMETER`. Paths: `data/` (ledgers, state, exports, learned

@@ -285,11 +285,10 @@ is never modified after writing and is the single source of truth.
 
 Besides the WhatsApp `excel` command, the same export pipeline can be run from
 the command line (`python -m rittenregistratie.export <car> [year]`, see
-`docs/plugins.md`), and a pristine spreadsheet bypassing all plugins can be
-rebuilt with:
+`docs/plugins.md`), and a pristine spreadsheet bypassing all plugins comes from:
 
 ```bash
-python -m rittenregistratie.rebuild <car_id> [--out ./restore]
+python -m rittenregistratie.export <car_id> [year] --no-plugins
 ```
 
 ## Plugin system
@@ -308,7 +307,6 @@ only; each car has its own event bus. A car without these keys uses the global
 
 | Group                        | Default (shipped)      | Purpose                              |
 |------------------------------|------------------------|--------------------------------------|
-| `rittenregistratie.odometer` | `whatsapp_manual`      | where odometer readings come from    |
 | `rittenregistratie.trajectory`| `maps_link` / `google`| resolve the route between addresses  |
 | `rittenregistratie.privatecap`| `warn`                | report on the 500 km/yr private cap  |
 

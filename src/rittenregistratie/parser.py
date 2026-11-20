@@ -14,7 +14,8 @@ Rules:
 - First whitespace-delimited token must be the integer end odometer.
 - The word ``private`` or tag ``#private`` (case-insensitive) anywhere marks
   the trip as private and is stripped from the destination; the Dutch
-  ``privé`` / ``prive`` works the same.
+  ``privé`` / ``prive`` works the same, and so does a note that is only that
+  word (``145230 Supermarkt -- privé``).
 - A standalone ``*`` is a marker the user may put on a message; it is kept in
   the stored raw message but stripped from the destination, so it cannot stop
   a known place from being recognised. The core attaches no meaning to it.
@@ -28,7 +29,8 @@ from .i18n import t
 
 from .models import ParsedMessage
 
-_PRIVATE_RE = re.compile(r"(?<!\w)#?(?:private|priv[eé])(?!\w)", re.IGNORECASE)
+# Not glued to another word by a hyphen: "non-private" is a place, not the flag.
+_PRIVATE_RE = re.compile(r"(?<![\w-])#?(?:private|priv[eé])(?![\w-])", re.IGNORECASE)
 # A bare '*' token: a marker for the user (and for plugins reading raw_message),
 # never part of the place name.
 _MARKER_RE = re.compile(r"(?:(?<=\s)|^)\*(?=\s|$)")
@@ -55,14 +57,16 @@ def parse_message(text: str) -> ParsedMessage:
         raise ParseError(t("parse.no_odo"))
 
     odo_token = tokens[0]
-    if not odo_token.isdigit():
+    # isascii: "²".isdigit() is true, and int("²") is not a number.
+    if not (odo_token.isascii() and odo_token.isdigit()):
         raise ParseError(
             f"First value must be the odometer reading (a number), got '{odo_token}'."
         )
     end_odo = int(odo_token)
 
     remainder = " ".join(tokens[1:])
-    is_private = bool(_PRIVATE_RE.search(remainder))
+    # "23250 Supermarkt -- privé": a note that is only the word means the same.
+    is_private = bool(_PRIVATE_RE.search(remainder) or _PRIVATE_RE.fullmatch(note))
     destination = _MARKER_RE.sub(" ", _PRIVATE_RE.sub("", remainder)).strip()
     # tidy up leftovers: empty brackets/parens and stray punctuation
     destination = re.sub(r"[\(\[\{]\s*[\)\]\}]", "", destination)

@@ -76,3 +76,19 @@ def test_dutch_prive_marks_a_private_trip():
 
 def test_prive_inside_a_word_is_a_place():
     assert not parse_message("45260 Privékliniek").is_private
+
+
+def test_a_note_that_is_only_the_word_marks_the_trip_private():
+    m = parse_message("23250 Supermarkt -- privé")
+    assert m.is_private and m.destination == "Supermarkt"
+    assert not parse_message("23250 Klant -- niet privé gereden").is_private
+
+
+def test_private_glued_with_a_hyphen_is_part_of_the_name():
+    m = parse_message("23250 non-private parking")
+    assert not m.is_private and m.destination == "non-private parking"
+
+
+def test_a_digit_that_is_not_a_number_is_a_parse_error():
+    with pytest.raises(ParseError):
+        parse_message("² office")

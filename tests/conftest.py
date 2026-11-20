@@ -11,6 +11,13 @@ from rittenregistratie import i18n
 
 
 @pytest.fixture(autouse=True)
+def no_local_env(tmp_path, monkeypatch):
+    """Settings reads ``.env`` from the working folder. A developer's rendered
+    ``.env`` (plugins, a Mollie key, an app secret) must not decide test results."""
+    monkeypatch.chdir(tmp_path)
+
+
+@pytest.fixture(autouse=True)
 def bot_language(request, monkeypatch):
     lang = getattr(request.module, "BOT_LANGUAGE", "en")
     monkeypatch.setenv("RIT_DEFAULT_LANGUAGE", lang)

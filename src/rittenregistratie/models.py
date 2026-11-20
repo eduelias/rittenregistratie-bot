@@ -22,16 +22,6 @@ class TripSource(str, Enum):
 
 
 @dataclass
-class OdometerReading:
-    """A single odometer snapshot from an OdometerSource."""
-
-    odometer_km: int
-    timestamp: datetime
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-
-
-@dataclass
 class TrajectoryResult:
     """Result of resolving the route between two addresses."""
 

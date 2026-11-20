@@ -234,6 +234,17 @@ CATALOG: Dict[str, tuple] = {
                         "the odometer has not moved since."),
     "trip.lower": ("[{label}] kilometerstand {odo} is lager dan de laatst vastgelegde {last}.",
                    "[{label}] odometer {odo} is lower than last recorded {last}."),
+    "trip.too_high": ("[{label}] {odo} is geen kilometerstand. Controleer het getal en stuur "
+                      "het opnieuw.",
+                      "[{label}] {odo} is not an odometer reading. Check the number and send "
+                      "it again."),
+    "trip.confirm_far": (
+        "[{label}] Kilometerstand {odo} is {km} km hoger dan de laatst vastgelegde {last}. "
+        "Niets vastgelegd.\nTypfout? Stuur de juiste stand. Klopt het? Stuur hetzelfde bericht "
+        "nog een keer, dan leg ik de rit vast.",
+        "[{label}] Odometer {odo} is {km} km above the last recorded {last}. Nothing logged.\n"
+        "A typo? Send the right reading. Correct? Send the same message again and I will "
+        "log the trip."),
     "trip.ask_address": (
         "Ik heb nog geen adres voor '{destination}'.\n"
         "Antwoord met het volledige adres, de naam van een bekende plek, of deel de locatie "

@@ -13,7 +13,12 @@ from test_billing import ADMIN, FORM, FakeMollie, _settings
 
 
 def _engine(tmp_path):
-    return Engine(_settings(tmp_path))
+    settings = _settings(tmp_path)
+    # The billing fixture's car names a plugin that is not installed here, and
+    # an export with a named plugin missing is refused.
+    cars = settings.cars_file
+    cars.write_text(cars.read_text().replace("  event_plugins: [reallocate]\n", ""))
+    return Engine(settings)
 
 
 def _car(engine):

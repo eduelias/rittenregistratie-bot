@@ -67,7 +67,6 @@ class Settings(BaseSettings):
     route_on_deviation: bool = False
 
     # Plugin selection (entry-point names)
-    odometer_source: str = "whatsapp_manual"
     trajectory_provider: str = "maps_link"
     private_cap_plugin: str = "warn"
     # Optional per-user override: numbers in private_cap_override_numbers use
@@ -85,6 +84,10 @@ class Settings(BaseSettings):
     # How close (metres) a trip's end position must be to a known location's
     # coordinates to count as that place (per-location radius_m overrides).
     place_radius_m: int = 300
+    # A typed reading more than this many km above the last one is logged only
+    # when the driver sends it a second time (232020 for 23202 is a typo far
+    # more often than a trip, and the ledger cannot take it back).
+    confirm_trip_km: int = 1000
 
     # Paying subscribers (cars with ``subscription:`` in cars.yaml). They never
     # inherit RIT_EVENT_PLUGINS or the per-number cap override: only the event
@@ -236,6 +239,10 @@ class Settings(BaseSettings):
             for n in self.private_cap_override_numbers.split(",")
             if n.strip()
         ]
+
+
+# No car has driven this far; a reading above it is a typo or a sensor glitch.
+MAX_ODOMETER = 2_000_000
 
 
 def write_atomic(path: Path, text: str) -> None:

@@ -69,7 +69,7 @@ def validate_trips(trips: Any) -> List[Dict[str, Any]]:
 
     Each row must be a dict with the required fields, integer odometers with
     ``end_odo >= start_odo``, a parseable ISO timestamp and a boolean
-    ``is_private``. Rows are sorted by timestamp and must form a non-decreasing
+    ``is_private``. Rows are sorted by odometer and must form a non-decreasing
     odometer chain (each start is at or after the previous end). Raises
     :class:`ExportError` naming the offending row.
     """
@@ -102,7 +102,9 @@ def validate_trips(trips: Any) -> List[Dict[str, Any]]:
         clean = dict(row)
         clean["start_odo"], clean["end_odo"], clean["timestamp"] = start, end, ts.isoformat()
         rows.append(clean)
-    rows.sort(key=lambda r: (r["timestamp"], r["start_odo"]))
+    # The odometer is the true order: clock time can repeat (the hour that
+    # happens twice in October) or step back, and must not break a sound chain.
+    rows.sort(key=lambda r: (r["start_odo"], r["end_odo"]))
     for i in range(1, len(rows)):
         prev, cur = rows[i - 1], rows[i]
         if cur["start_odo"] < prev["end_odo"]:
@@ -163,6 +165,17 @@ class ExportService:
         rows = validate_trips(result["trips"])
         if not rows:
             raise ExportError("export.pre_generate handler returned no trips")
+        # A plugin may relabel or split rows, never change what the car drove:
+        # same first and last reading as the ledger, no km skipped, same year.
+        recorded = validate_trips(trips)
+        if (rows[0]["start_odo"], rows[-1]["end_odo"]) != (
+                recorded[0]["start_odo"], recorded[-1]["end_odo"]):
+            raise ExportError("plugin changed the year's first or last odometer reading")
+        for prev, cur in zip(rows, rows[1:]):
+            if cur["start_odo"] != prev["end_odo"]:
+                raise ExportError(f"plugin left a gap in the readings at {prev['end_odo']}")
+        if any(int(r["timestamp"][:4]) != year for r in rows):
+            raise ExportError(f"plugin returned a row outside {year}")
 
         out_dir = out_dir or self.settings.exports_dir
         out_dir.mkdir(parents=True, exist_ok=True)

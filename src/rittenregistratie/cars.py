@@ -290,6 +290,13 @@ def remove_car_from_yaml(path: Path, identifier: str) -> Removal:
     return result
 
 
+def car_ids_on_disk(data_dir: Path) -> set:
+    """Car ids with a ledger or state file. A new car must never get one of
+    these: it would continue, and export, the previous driver's trips."""
+    return ({p.name[len("raw-ledger-"):-len(".jsonl")] for p in data_dir.glob("raw-ledger-*.jsonl")}
+            | {p.name[len("state-"):-len(".json")] for p in data_dir.glob("state-*.json")})
+
+
 def slugify_car_id(label: str, existing: List[str]) -> str:
     """Make a unique, filesystem-safe car id from a label."""
     base = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_") or "car"

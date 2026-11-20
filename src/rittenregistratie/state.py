@@ -23,6 +23,8 @@ class State:
     # the last automatically logged trip whose end place had no name yet:
     # {"address", "lat", "lon"}; 'name <place>' turns it into a known location
     last_unnamed: Optional[dict] = None
+    # a reading far above the last one, logged only once it is sent again
+    unconfirmed_odo: Optional[int] = None
 
     def private_ytd(self, year: int) -> int:
         return self.private_km.get(str(year), 0)
