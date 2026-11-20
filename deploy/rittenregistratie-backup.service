@@ -1,5 +1,8 @@
 [Unit]
 Description=rittenregistratie: back up data/ and config/ (local + NAS disk, 30 days)
+# After a power cut the USB disk can appear minutes after boot. Without this the
+# "second disk" copy lands on the SD card and the run reports success.
+AssertPathIsMountPoint=/media/nas
 
 [Service]
 Type=oneshot

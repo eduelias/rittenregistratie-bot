@@ -45,7 +45,8 @@ class Settings(BaseSettings):
     # invoice is ready (they reply 'factuur' to get the PDF). Parameters: the
     # amount, the invoice number.
     whatsapp_invoice_template: str = "invoice_ready"
-    allowed_sender: str = ""  # E.164 without '+', e.g. 31612345678
+    # Local development only: accept webhooks without an app secret to check.
+    whatsapp_allow_unsigned: bool = False
     # Admin numbers (comma-separated, E.164 without '+') who can approve joins.
     admin_numbers: str = ""
     # Allow unregistered numbers to request onboarding (else silently ignored).
@@ -76,7 +77,9 @@ class Settings(BaseSettings):
 
     # Event plugins (entry-point group "rittenregistratie.events"): "*" loads
     # every installed plugin, "" loads none, or a comma-separated list of names.
-    event_plugins: str = "*"
+    # "" none (the default: a car gets a plugin only when something names it),
+    # "*" every installed plugin, or a comma-separated list of names.
+    event_plugins: str = ""
 
     # Vehicle-telemetry hooks (POST /hooks/<plugin>/<car_id>): shared secret
     # sent as X-Hook-Secret. Empty disables the endpoint.

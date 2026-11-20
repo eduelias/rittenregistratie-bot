@@ -40,12 +40,12 @@
     <text class="sub" x="16" y="72">signed X-Hub-256</text>
   </g>
 
-  <!-- Cloudflare Tunnel -->
+  <!-- Reverse proxy -->
   <g transform="translate(560,100)">
     <rect width="180" height="90" rx="14" fill="#ffffff" stroke="#128C7E" stroke-width="2"/>
     <rect width="180" height="28" rx="14" fill="url(#hdr)"/>
     <rect y="14" width="180" height="14" fill="url(#hdr)"/>
-    <text class="badge" x="16" y="19">Cloudflare Tunnel</text>
+    <text class="badge" x="16" y="19">Caddy (HTTPS)</text>
     <text class="lbl" x="16" y="52">public HTTPS</text>
     <text class="sub" x="16" y="72">→ 127.0.0.1:8000</text>
   </g>
@@ -58,7 +58,7 @@
       <rect width="170" height="40" rx="8" fill="#ffffff" stroke="#128C7E"/>
       <text class="plug" x="14" y="25">/webhook</text>
       <rect x="190" width="170" height="40" rx="8" fill="#ffffff" stroke="#128C7E"/>
-      <text class="plug" x="204" y="25">/health /selftest</text>
+      <text class="plug" x="204" y="25">/health</text>
     </g>
     <g transform="translate(20,96)">
       <rect width="360" height="40" rx="8" fill="#ffffff" stroke="#128C7E"/>
@@ -123,5 +123,5 @@
   </g>
 
   <text class="note" x="40" y="638">MIT core: a faithful recorder. It stores each trip exactly as reported (real odometer difference) and never fabricates or reclassifies trips.</text>
-  <text class="note" x="40" y="662">Stack: Python · FastAPI · openpyxl · WhatsApp Cloud API · Cloudflare Tunnel · systemd on Raspberry Pi.</text>
+  <text class="note" x="40" y="662">Stack: Python · FastAPI · openpyxl · WhatsApp Cloud API · Caddy · systemd on Raspberry Pi.</text>
 </svg>

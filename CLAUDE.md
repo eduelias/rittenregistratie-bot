@@ -9,7 +9,7 @@ recorder — never invents or reclassifies trips. Not tax advice.
 ## Where it runs
 
 Pi `du7` (192.168.2.68), systemd service `rittenregistratie.service`
-(uvicorn on `127.0.0.1:8000`, exposed via Cloudflare Tunnel). **See the
+(uvicorn on port 8000, published as https://rrbot.nl by Caddy). **See the
 du7-deploy skill** for the actual procedure — roughly:
 
 ```bash
@@ -97,7 +97,7 @@ No ruff config here (unlike the private-plugins sibling) — CI runs pytest only
 ## Config / secrets (`config.py`, prefix `RIT_`, `.env` not committed)
 
 WhatsApp: `RIT_WHATSAPP_TOKEN/PHONE_NUMBER_ID/APP_SECRET/VERIFY_TOKEN/GRAPH_VERSION`.
-Access: `RIT_ALLOWED_SENDER`, `RIT_ADMIN_NUMBERS`, `RIT_ONBOARDING_ENABLED`,
+Access: `RIT_ADMIN_NUMBERS`, `RIT_ONBOARDING_ENABLED`,
 `RIT_MAX_USERS`. Behaviour: `RIT_REPLY_MODE`, `RIT_GOOGLE_MAPS_API_KEY`.
 Plugins: `RIT_TRAJECTORY_PROVIDER`,
 `RIT_PRIVATE_CAP_PLUGIN(_OVERRIDE)`, `RIT_PRIVATE_CAP_OVERRIDE_NUMBERS`,

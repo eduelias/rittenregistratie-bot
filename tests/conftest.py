@@ -15,6 +15,8 @@ def no_local_env(tmp_path, monkeypatch):
     """Settings reads ``.env`` from the working folder. A developer's rendered
     ``.env`` (plugins, a Mollie key, an app secret) must not decide test results."""
     monkeypatch.chdir(tmp_path)
+    # Tests post unsigned webhooks; production refuses them without a secret.
+    monkeypatch.setenv("RIT_WHATSAPP_ALLOW_UNSIGNED", "true")
 
 
 @pytest.fixture(autouse=True)

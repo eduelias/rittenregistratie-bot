@@ -36,4 +36,5 @@ token / app secret in the Meta App Dashboard) and open a private report.
 
 The bot verifies inbound webhooks using the `X-Hub-Signature-256` header and an
 allow-list of sender numbers (via `config/cars.yaml`). When self-hosting, expose
-it over HTTPS (e.g. Cloudflare Tunnel) and keep your host patched.
+it over HTTPS (a reverse proxy such as Caddy) and keep your host patched. Without
+`RIT_WHATSAPP_APP_SECRET` the bot refuses every webhook.

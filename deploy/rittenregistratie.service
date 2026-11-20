@@ -9,15 +9,21 @@ User=esaleh
 Group=esaleh
 WorkingDirectory=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot
 EnvironmentFile=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/.env
-ExecStart=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/.venv/bin/uvicorn rittenregistratie.main:app --host 127.0.0.1 --port 8000
+# 0.0.0.0: Home Assistant posts car trips to /hooks/... over the LAN. The
+# internet reaches the bot only through Caddy (deploy/Caddyfile.rrbot).
+ExecStart=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/.venv/bin/uvicorn rittenregistratie.main:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=3
 
-# Hardening
+# Hardening. strict: the whole file system is read-only for this process
+# except the two folders it writes (full left all of /home writable).
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=full
+ProtectSystem=strict
 ReadWritePaths=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/data
+ReadWritePaths=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/config
+# The user is in the docker group; the public process must not reach Docker.
+InaccessiblePaths=-/run/docker.sock
 
 [Install]
 WantedBy=multi-user.target

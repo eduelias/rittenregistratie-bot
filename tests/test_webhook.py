@@ -114,12 +114,138 @@ def test_unregistered_number_gets_onboarding(client, tmp_path):
 
 # --- reactions ---------------------------------------------------------------
 
-def test_extract_message_carries_id():
-    from rittenregistratie.whatsapp import extract_message
+def test_extract_messages_carries_id():
+    from rittenregistratie.whatsapp import extract_messages
     body = {"entry": [{"changes": [{"value": {"messages": [
         {"from": "316", "id": "wamid.ABC", "type": "text", "text": {"body": "hi"}}
     ]}}]}]}
-    assert extract_message(body) == {"from": "316", "id": "wamid.ABC", "text": "hi"}
+    assert extract_messages(body) == [{"from": "316", "id": "wamid.ABC", "text": "hi"}]
+
+
+def test_extract_messages_takes_every_message_and_skips_reactions():
+    from rittenregistratie.whatsapp import extract_messages
+    text = lambda i, body: {"from": "316", "id": i, "type": "text", "text": {"body": body}}  # noqa: E731
+    body = {"entry": [
+        {"changes": [{"value": {"messages": [
+            text("a", "150 Office"),
+            {"from": "316", "id": "r", "type": "reaction", "reaction": {"emoji": "x"}},
+            text("b", "180 Home")]}}]},
+        {"changes": [{"value": {"statuses": [{"id": "s"}]}},
+                     {"value": {"messages": [{"from": "317", "id": "c", "type": "image"}]}}]},
+    ]}
+    assert [(m["id"], m["text"]) for m in extract_messages(body)] == [
+        ("a", "150 Office"), ("b", "180 Home"), ("c", None)]
+    for junk in ({}, {"entry": None}, {"entry": [{"changes": [{"value": "x"}]}]}, {"entry": [5]}):
+        assert extract_messages(junk) == []
+
+
+# --- who may post -------------------------------------------------------------
+
+def _signed(secret: str, raw: bytes) -> str:
+    import hashlib
+    import hmac
+    return "sha256=" + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+
+
+def test_verify_signature():
+    from rittenregistratie.whatsapp import verify_signature
+    raw = b'{"entry": []}'
+    assert verify_signature("s3cret", raw, _signed("s3cret", raw))
+    assert not verify_signature("s3cret", raw, _signed("other", raw))
+    assert not verify_signature("s3cret", raw + b" ", _signed("s3cret", raw))   # body changed
+    assert not verify_signature("s3cret", raw, "")
+    assert not verify_signature("s3cret", raw, "sha256=é")                     # no crash
+    # Nothing to check against: refused, unless development says otherwise.
+    assert not verify_signature("", raw, _signed("", raw))
+    assert verify_signature("", raw, "", allow_unsigned=True)
+
+
+@pytest.fixture
+def signed_client(client, monkeypatch):
+    """The same app with an app secret set, as in production."""
+    import rittenregistratie.main as main
+    monkeypatch.setattr(main._settings, "whatsapp_app_secret", "s3cret")
+    monkeypatch.setattr(main._settings, "whatsapp_allow_unsigned", False)
+    return client
+
+
+def test_webhook_refuses_what_meta_did_not_sign(signed_client, tmp_path):
+    import json
+    raw = json.dumps(_msg("150 Home")).encode()
+    headers = {"Content-Type": "application/json"}
+    assert signed_client.post("/webhook", content=raw, headers=headers).status_code == 403
+    bad = dict(headers, **{"X-Hub-Signature-256": _signed("guess", raw)})
+    assert signed_client.post("/webhook", content=raw, headers=bad).status_code == 403
+    assert not (tmp_path / "data" / "raw-ledger-car.jsonl").exists()
+    good = dict(headers, **{"X-Hub-Signature-256": _signed("s3cret", raw)})
+    assert signed_client.post("/webhook", content=raw, headers=good).status_code == 200
+    assert (tmp_path / "data" / "raw-ledger-car.jsonl").exists()
+
+
+def test_no_secret_and_no_development_switch_refuses_everything(client, monkeypatch):
+    import rittenregistratie.main as main
+    monkeypatch.setattr(main._settings, "whatsapp_allow_unsigned", False)
+    assert client.post("/webhook", json=_msg("ping")).status_code == 403
+
+
+def test_a_driver_cannot_run_admin_commands(client, tmp_path):
+    cars = (tmp_path / "config" / "cars.yaml")
+    before = cars.read_text()
+    for command in ("approve 31699999999 Polo 10 Home", "remove 31600000000", "remove car",
+                    "assign 31699999999 car", "pending", "list"):
+        assert client.post("/webhook", json=_msg(command)).status_code == 200
+    assert cars.read_text() == before
+
+
+def test_one_delivery_with_two_trips_logs_both(client, tmp_path):
+    body = _msg("150 Home")
+    body["entry"][0]["changes"][0]["value"]["messages"].append(
+        {"from": "31600000000", "type": "text", "text": {"body": "180 Home"}})
+    assert client.post("/webhook", json=body).status_code == 200
+    rows = (tmp_path / "data" / "raw-ledger-car.jsonl").read_text().splitlines()
+    assert len(rows) == 2
+
+
+def test_a_delivery_meta_repeats_is_handled_once(client, monkeypatch):
+    import rittenregistratie.main as main
+    handled = []
+
+    async def spy(msg):
+        handled.append(msg["id"])
+        from fastapi import Response
+        return Response(status_code=200)
+
+    monkeypatch.setattr(main, "_handle_message", spy)
+    body = _msg("ping")
+    body["entry"][0]["changes"][0]["value"]["messages"][0]["id"] = "wamid.SAME"
+    client.post("/webhook", json=body)
+    client.post("/webhook", json=body)
+    assert handled == ["wamid.SAME"]
+
+
+def test_a_message_that_crashes_still_gets_meta_a_200(client, monkeypatch):
+    import rittenregistratie.main as main
+
+    async def boom(msg):
+        raise RuntimeError("bug")
+
+    monkeypatch.setattr(main, "_handle_message", boom)
+    assert client.post("/webhook", json=_msg("150 Home")).status_code == 200
+
+
+def test_nothing_internal_is_served(client):
+    for path in ("/selftest", "/docs", "/redoc", "/openapi.json"):
+        assert client.get(path).status_code == 404, path
+    assert client.get("/health").headers["X-Content-Type-Options"] == "nosniff"
+    assert client.get("/health").headers["X-Frame-Options"] == "DENY"
+
+
+def test_the_hook_needs_its_secret(client, monkeypatch):
+    import rittenregistratie.main as main
+    assert client.post("/hooks/homeassistant/car", json={"odometer": 150}).status_code == 403
+    monkeypatch.setattr(main._settings, "hook_secret", "h00k")
+    wrong = client.post("/hooks/homeassistant/car", json={}, headers={"X-Hook-Secret": "wrong"})
+    assert wrong.status_code == 403
 
 
 def test_send_reaction_payload(monkeypatch):
@@ -329,3 +455,18 @@ def test_cars_and_car_commands_over_webhook(reaction_client, tmp_path):
     assert ("31600000000", "wamid.3", "\U0001F44D") in sent["reactions"]
     client.post("/webhook", json=_msg_with_id("cars", "wamid.4"))
     assert any("V [van] (active)" in t for _, t in sent["texts"])
+
+
+def test_the_24_hour_window_closes_an_hour_early(tmp_path):
+    """Sending right at the limit risks a refused message, so the bot stops at 23 hours."""
+    from datetime import datetime, timedelta
+    from rittenregistratie.window import InboundWindow
+    w = InboundWindow(tmp_path / "last-inbound.json")
+    t0 = datetime(2026, 11, 20, 9, 0)
+    assert not w.is_open("31612345678", t0)                     # never wrote
+    w.seen("31612345678", t0)
+    assert w.is_open("31612345678", t0 + timedelta(hours=22, minutes=59))
+    assert not w.is_open("31612345678", t0 + timedelta(hours=23, minutes=1))
+    w.seen("31600000009", t0 + timedelta(days=3))               # someone else, days later
+    import json
+    assert list(json.loads((tmp_path / "last-inbound.json").read_text())) == ["31600000009"]

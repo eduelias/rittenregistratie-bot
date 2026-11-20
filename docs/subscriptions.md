@@ -182,12 +182,14 @@ privacy statement says what is counted).
   at Squarespace; DNSSEC turned off for the move), DNS-only CNAME to
   du7.sytes.net, Let's Encrypt certificates for rrbot.nl and www (redirects to
   the apex). support@rrbot.nl forwards to du7@msn.com.
-- du7: main deployed with Mollie in **test mode**. `.env` backup
-  `.env.bak-*-rrbot`; Caddyfile backup `Caddyfile.bak-*` (committed in
+- du7: main deployed with Mollie **live** since 2026-11-02 (`RIT_MAX_USERS=25`).
+  The `.env` is rendered from 1Password; the old `.env.bak-*` copies on du7 were
+  deleted on 2026-11-20. Caddyfile backup `Caddyfile.bak-*` (committed in
   du7/dns-stack).
-- Meta webhook: `https://rrbot.nl/webhook` (was the Tailscale Funnel
-  `https://du7.tail02fdb2.ts.net/ritten/webhook`; to roll back, POST that URL to
-  `/{app-id}/subscriptions` again). `cloudflared-quick` was not in Meta's path.
+- Meta webhook: `https://rrbot.nl/webhook`. The Tailscale Funnel path
+  `https://du7.tail02fdb2.ts.net/ritten` that carried it before was still
+  publishing port 8000 without Caddy's filter until 2026-11-20, when it was
+  removed. There is no rollback route; nothing but Caddy may publish the bot.
 - `RIT_WHATSAPP_VERIFY_TOKEN` rotated on 2026-11-01 (it had been echoed in a
   deploy log): new value in 1Password and du7's `.env`, Meta re-verified.
 - du7's `.env` cannot be `source`d (`RIT_COMPANY_LINE` has spaces); systemd
@@ -207,8 +209,7 @@ privacy statement says what is counted).
    (the mercedes car keeps `reallocate` + `homeassistant` through cars.yaml).
 4. `git pull` + `sudo -n systemctl restart rittenregistratie` (du7-deploy).
 5. Meta app › WhatsApp › Configuration: webhook URL
-   `https://rrbot.nl/webhook`, same verify token. Once messages arrive there,
-   stop and disable `cloudflared-quick.service`.
+   `https://rrbot.nl/webhook`, same verify token (done 2026-11-01).
 6. Run a test-mode signup on https://rrbot.nl. Delete the test car with
    `remove <number>`.
 
@@ -309,7 +310,8 @@ Operations:
       `/media/nas/backups/rittenregistratie`, 30 days. Every archive is
       verified (checksums, ledgers, JSON) after writing; restore with
       `python -m rittenregistratie.backup restore <archive> --to <dir>`.
-      The NAS disk is in the same house: an off-site copy is the owner's call.
+      The NAS disk is in the same house. **Open risk:** there is no off-site
+      copy (owner's decision, 2026-11-20); a fire or theft takes the record.
 - [x] The bot speaks Dutch or English per number (`english` / `nederlands`),
       default Dutch (#50); the trip template exists in both (#51).
 - [ ] The number is the Meta-provided +1 555; a Dutch number would look more
@@ -323,3 +325,26 @@ Operations:
 - [x] Campaign links are counted: `utm_source` and `utm_campaign` per day
       (analytics.py), shown in `stats`. Use e.g.
       `https://rrbot.nl/?utm_source=linkedin&utm_campaign=launch`.
+
+
+## Behaviour added by the 2026-11-20 audit
+
+- **Ending a subscription.** The server ends every cancelled subscription whose
+  last day has passed (every six hours), not only when that number writes
+  again. The car's seat is free and the 90-day deletion starts on time.
+- **Withdrawal.** Cancelling within 14 days of signing up refunds the mandate
+  payment through Mollie. If Mollie refuses the refund, or a subscription
+  charge fell inside the 14 days, the owner gets an alert to refund by hand.
+- **Duplicate signups.** A paid signup for a number that already has a car
+  creates no second subscription: it is marked failed, the mandate payment is
+  refunded, and the owner is told.
+- **Chargebacks.** A direct debit reversed after it was seen as paid is
+  reported to the owner.
+- **Invoices** use a Unicode font, so any name gets one.
+- **Readings.** A typed reading more than `RIT_CONFIRM_TRIP_KM` (1000) above
+  the last is logged only when sent twice; above 2,000,000 it is refused.
+- **Webhook.** Unsigned requests are refused when `RIT_WHATSAPP_APP_SECRET` is
+  empty; every message in a delivery is handled; a repeated delivery is
+  handled once; Meta always gets a 200.
+- **Logs.** Request URLs of outgoing calls (which carried the Google key and
+  coordinates) and the phone number of delivered messages are no longer logged.

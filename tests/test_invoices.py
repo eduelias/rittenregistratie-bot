@@ -286,3 +286,10 @@ async def test_a_name_outside_western_european_still_gets_an_invoice(paid, name,
     await billing.sync_payment("tr_70")
     assert len(issued) == 1
     assert name in pdf_text(invoicing.store.pdf(issued[0]).read_bytes())
+
+
+def test_an_unknown_quality_rating_is_not_reported_as_a_drop():
+    from rittenregistratie.wa_health import changes
+    old = {"quality": "GREEN", "tier": "TIER_2K"}
+    assert changes(old, {"quality": "UNKNOWN", "tier": "TIER_2K"}) == []
+    assert changes(old, {"quality": "YELLOW", "tier": "TIER_2K"})[0][0] == "alert.wa_quality"
