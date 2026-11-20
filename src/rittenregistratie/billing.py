@@ -73,6 +73,7 @@ from .i18n import Key, date_text, money, render_parts, set_current, t
 log = logging.getLogger("rittenregistratie.billing")
 
 PLANS = ("monthly", "yearly")
+WITHDRAWAL_DAYS = 14  # the statutory period in which a consumer may withdraw
 _INTERVAL = {"monthly": "1 month", "yearly": "12 months"}
 _PLAN_NL = {"monthly": "maandelijks", "yearly": "jaarlijks"}
 _LOCALE = {"nl": "nl_NL", "en": "en_US"}   # Mollie checkout language per site language
@@ -207,11 +208,14 @@ class Mollie:
         return self._key.startswith("test_")
 
     async def _call(self, method: str, path: str, body: Optional[dict] = None) -> dict:
-        async with httpx.AsyncClient(timeout=20.0, transport=self._transport) as client:
-            resp = await client.request(
-                method, f"{self._base}{path}", json=body,
-                headers={"Authorization": f"Bearer {self._key}"},
-            )
+        try:
+            async with httpx.AsyncClient(timeout=20.0, transport=self._transport) as client:
+                resp = await client.request(
+                    method, f"{self._base}{path}", json=body,
+                    headers={"Authorization": f"Bearer {self._key}"},
+                )
+        except httpx.HTTPError as exc:  # a timeout must reach callers as the error they catch
+            raise MollieError(f"Mollie {method} {path}: {exc!r}") from exc
         if resp.status_code >= 400:
             try:
                 detail = resp.json().get("detail", resp.text)
@@ -240,6 +244,10 @@ class Mollie:
     async def cancel_subscription(self, customer_id: str, subscription_id: str) -> dict:
         return await self._call("DELETE", f"/customers/{customer_id}/subscriptions/{subscription_id}")
 
+    async def refund_payment(self, payment_id: str, value: str, description: str) -> dict:
+        return await self._call("POST", f"/payments/{payment_id}/refunds",
+                                {"amount": amount(value), "description": description})
+
     async def list_mandates(self, customer_id: str) -> List[dict]:
         data = await self._call("GET", f"/customers/{customer_id}/mandates")
         return (data.get("_embedded") or {}).get("mandates") or []
@@ -260,6 +268,8 @@ def parse_phone(raw: str) -> str:
         digits = digits[2:]
     elif len(digits) == 10 and digits.startswith("06"):
         digits = "31" + digits[1:]
+    if digits.startswith("310"):  # "+31 (0)6 ...": the zero in brackets is not dialled
+        digits = "31" + digits[3:]
     if not (10 <= len(digits) <= 15) or digits.startswith("0"):
         raise SignupError("Vul je WhatsApp-nummer in, bijvoorbeeld 06 12345678 of +31 6 12345678.",
                           "Enter your WhatsApp number, e.g. 06 12345678 or +31 6 12345678.")
@@ -403,7 +413,7 @@ class Billing:
     # --- 2. payments --------------------------------------------------
     async def sync_payment(self, payment_id: str) -> Optional[Signup]:
         """Bring our state in line with one Mollie payment. Safe to repeat."""
-        if not payment_id or not payment_id.startswith("tr_"):
+        if not re.fullmatch(r"tr_\w{1,40}", payment_id or ""):
             return None
         async with self._lock:
             try:
@@ -472,6 +482,17 @@ class Billing:
         if signup.lang == "en" and self.engine.languages.get(signup.phone) is None:
             # Signed up on the English site: the bot speaks English from the start.
             self.engine.languages.set(signup.phone, "en")
+        if self.engine.cars.is_registered(signup.phone):
+            # The form was sent twice and both were paid, or the number got a car
+            # in the meantime. A second subscription would charge twice and block
+            # 'opzeggen', so none is made and the mandate payment goes back.
+            signup.status = FAILED
+            signup.note("number already has a car; no subscription created")
+            self.store.save(signup)
+            refund = await self._refund(signup, "dubbele aanmelding")
+            await self._tell_admins("alert.duplicate_signup", id=signup.id, name=signup.name,
+                                    phone=signup.phone, refund=Key(f"refund.{refund}"))
+            return
         start = date.today() + timedelta(days=self.settings.trial_days)
         sub = await self._subscribe(signup, signup.plan, start, payment.get("mandateId") or "")
         signup.trial_until = (start - timedelta(days=1)).isoformat()
@@ -526,15 +547,16 @@ class Billing:
                         payment.get("id"), payment.get("subscriptionId"))
             return None
         status = payment.get("status")
-        marker = f"recurring {payment.get('id')} {status}"
-        if marker in " ".join(signup.events):
+        # A reversed direct debit comes back with the status still "paid" plus
+        # amountChargedBack, so the chargeback is part of what was seen.
+        charged_back = bool(payment.get("amountChargedBack"))
+        marker = f"recurring {payment.get('id')} {status}" + (" chargeback" if charged_back else "")
+        if signup.noted(marker):
             return signup
-        signup.note(marker)
-        self.store.save(signup)
-        if status in _PAYMENT_DEAD or payment.get("amountChargedBack"):
+        if status in _PAYMENT_DEAD or charged_back:
             await self._tell_admins("alert.charge_failed", payment=payment.get("id"),
                                     name=signup.name, phone=signup.phone, car=signup.car_id,
-                                    status=status)
+                                    status="chargeback" if charged_back else status)
         elif status == "paid" and self.on_paid is not None:
             try:
                 await self.on_paid(signup, payment)
@@ -542,6 +564,10 @@ class Billing:
                 log.exception("on_paid failed for payment %s", payment.get("id"))
                 await self._tell_admins("alert.invoice_failed", payment=payment.get("id"),
                                         name=signup.name, phone=signup.phone)
+        # Marked after the work: a crash in between repeats it (issuing an
+        # invoice twice is safe) instead of losing it.
+        signup.note(marker)
+        self.store.save(signup)
         return signup
 
     async def set_billing_details(self, phone: str, *, company: Optional[str] = None,
@@ -706,9 +732,10 @@ class Billing:
         signup.access_until = max(nxt - timedelta(days=1), today).isoformat()
         signup.note(f"cancelled by customer, access until {signup.access_until}")
         self.store.save(signup)
+        refund = await self._withdrawal_refund(signup, today)
         await self._tell_admins("alert.cancelled", name=signup.name, phone=signup.phone,
                                 date=signup.access_until)
-        return t("sub.cancelled", date=date_text(signup.access_until))
+        return t("sub.cancelled", date=date_text(signup.access_until)) + refund
 
     async def _pause(self, signup: Signup, today: date) -> str:
         nxt = await self._next_charge(signup, today)
@@ -757,11 +784,45 @@ class Billing:
         signup.access_until = signup.paid_until or today.isoformat()
         signup.note(f"cancelled while paused, access until {signup.access_until}")
         self.store.save(signup)
+        refund = await self._withdrawal_refund(signup, today)
         await self._tell_admins("alert.cancelled_paused", name=signup.name, phone=signup.phone,
                                 date=signup.access_until)
         if self._paid(signup.access_until, today):
-            return t("sub.cancelled_paused", date=date_text(signup.access_until))
-        return t("sub.cancelled_paused_now")
+            return t("sub.cancelled_paused", date=date_text(signup.access_until)) + refund
+        return t("sub.cancelled_paused_now") + refund
+
+    async def _refund(self, signup: Signup, why: str) -> str:
+        """Give the mandate payment back, once: 'done', 'failed' or 'none'."""
+        pid = signup.first_payment_id
+        if not pid or signup.noted(f"refund {pid}"):
+            return "none"
+        try:
+            await self.mollie.refund_payment(pid, self.settings.mandate_amount,
+                                             f"RittenRegistratie-bot: {why}")
+        except MollieError as exc:
+            signup.note(f"refund of {pid} failed: {exc}")
+            self.store.save(signup)
+            return "failed"
+        signup.note(f"refund {pid}")
+        self.store.save(signup)
+        return "done"
+
+    async def _withdrawal_refund(self, signup: Signup, today: date) -> str:
+        """The terms promise the money back, unasked, on a cancellation within
+        14 days of signing up. Returns the line to add to the customer's reply."""
+        if today > date.fromisoformat(signup.created_at[:10]) + timedelta(days=WITHDRAWAL_DAYS):
+            return ""
+        result = await self._refund(signup, "herroeping")
+        # In the trial only the mandate payment was taken. A subscription charge
+        # inside the 14 days (a shorter trial) is refunded by hand.
+        charged = [e.split()[2] for e in signup.events
+                   if " recurring " in e and e.endswith(" paid")]
+        if result == "failed" or charged:
+            await self._tell_admins("alert.refund_by_hand", name=signup.name, phone=signup.phone,
+                                    payments=", ".join(charged + ([signup.first_payment_id]
+                                                                  if result == "failed" else [])))
+        return "\n" + t("sub.refunded", amount=money(self.settings.mandate_amount)) \
+            if result == "done" else ""
 
     # resume / restart (PAUSED, CANCELED, ENDED)
     async def _continue(self, signup: Signup, plan: str, today: date) -> str:
@@ -932,6 +993,14 @@ class Billing:
         signup.note("access ended; car removed from cars.yaml (ledger kept)")
         self.store.save(signup)
         return self.ended_text(signup)
+
+    def sweep(self, today: Optional[date] = None) -> int:
+        """End every cancelled subscription whose last day has passed. expired()
+        only runs on that number's next message, so someone who cancels and
+        never writes again would keep a seat, and the 90-day deletion the
+        privacy statement promises would never start. Returns how many ended."""
+        return sum(1 for s in self.store.all()
+                   if s.status == CANCELED and self.expired(s.phone, today))
 
     def ended_text(self, signup=None) -> str:
         """The notice for a number whose subscription ended. Pass the phone's

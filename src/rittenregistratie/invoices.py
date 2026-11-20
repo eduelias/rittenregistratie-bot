@@ -40,6 +40,8 @@ from .cars import normalize_phone
 from .config import Settings, write_atomic
 from .i18n import date_text, money, t
 
+FONT, FONT_DIR = "DejaVu", Path(__file__).parent / "fonts"
+
 log = logging.getLogger("rittenregistratie.invoices")
 
 VAT_RATE = 21
@@ -178,7 +180,10 @@ def render_pdf(invoice: Invoice, settings: Settings) -> bytes:
     from fpdf import FPDF
 
     pdf = FPDF(format="A4")
-    pdf.core_fonts_encoding = "windows-1252"  # € and accents in the core fonts
+    # The built-in fonts stop at Western European: "Doğan" or "Łukasz" raised
+    # and that customer never got an invoice.
+    pdf.add_font(FONT, "", FONT_DIR / "DejaVuSans.ttf")
+    pdf.add_font(FONT, "B", FONT_DIR / "DejaVuSans-Bold.ttf")
     pdf.set_margins(20, 20, 20)
     pdf.set_auto_page_break(True, 20)
     pdf.add_page()
@@ -186,9 +191,9 @@ def render_pdf(invoice: Invoice, settings: Settings) -> bytes:
     pdf.set_author(settings.company_name)
     w = pdf.epw
 
-    pdf.set_font("Helvetica", "B", 20)
+    pdf.set_font(FONT, "B", 20)
     pdf.cell(w / 2, 10, "Factuur")
-    pdf.set_font("Helvetica", "", 9)
+    pdf.set_font(FONT, "", 9)
     y = pdf.get_y()
     for line in supplier_lines(settings):
         pdf.set_xy(20 + w / 2, y)
@@ -197,15 +202,15 @@ def render_pdf(invoice: Invoice, settings: Settings) -> bytes:
     if invoice.test:
         pdf.set_xy(20, 32)
         pdf.set_text_color(200, 0, 0)
-        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_font(FONT, "B", 11)
         pdf.cell(w / 2, 6, "TESTFACTUUR: geen geldige factuur")
         pdf.set_text_color(0, 0, 0)
 
     pdf.set_y(max(y, 48) + 8)
     top = pdf.get_y()
-    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_font(FONT, "B", 9)
     pdf.cell(w / 2, 5, "Aan", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 10)
+    pdf.set_font(FONT, "", 10)
     to = [invoice.company, invoice.customer if not invoice.company else f"t.a.v. {invoice.customer}"]
     to += [part.strip() for part in invoice.address.split(",") if part.strip()] if invoice.address else []
     for line in (x for x in to if x):
@@ -217,28 +222,28 @@ def render_pdf(invoice: Invoice, settings: Settings) -> bytes:
     pdf.set_y(top)
     for label, value in meta:
         pdf.set_x(20 + w / 2)
-        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_font(FONT, "B", 9)
         pdf.cell(w / 4, 5, label)
-        pdf.set_font("Helvetica", "", 10)
+        pdf.set_font(FONT, "", 10)
         pdf.cell(w / 4, 5, value, align="R", new_x="LMARGIN", new_y="NEXT")
     pdf.set_y(max(bottom, pdf.get_y()) + 12)
 
     cols = (w * 0.50, w * 0.30, w * 0.20)
-    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_font(FONT, "B", 9)
     pdf.set_fill_color(238, 241, 236)
     for width, head, align in zip(cols, ("Omschrijving", "Periode", "Bedrag excl. btw"),
                                   ("L", "L", "R")):
         pdf.cell(width, 7, head, align=align, fill=True)
     pdf.ln(7)
-    pdf.set_font("Helvetica", "", 10)
+    pdf.set_font(FONT, "", 10)
     span = (f"{date.fromisoformat(invoice.period_start):%d-%m-%Y} t/m "
             f"{date.fromisoformat(invoice.period_end):%d-%m-%Y}")
     size = 10.0
     while pdf.get_string_width(invoice.description) > cols[0] - 2 and size > 7:
         size -= 0.5
-        pdf.set_font("Helvetica", "", size)
+        pdf.set_font(FONT, "", size)
     pdf.cell(cols[0], 7, invoice.description)
-    pdf.set_font("Helvetica", "", 10)
+    pdf.set_font(FONT, "", 10)
     pdf.cell(cols[1], 7, span)
     pdf.cell(cols[2], 7, _eur(invoice.net), align="R", new_x="LMARGIN", new_y="NEXT")
     pdf.line(20, pdf.get_y() + 1, 20 + w, pdf.get_y() + 1)
@@ -247,13 +252,13 @@ def render_pdf(invoice: Invoice, settings: Settings) -> bytes:
     for label, value, bold in (("Totaal excl. btw", invoice.net, False),
                                (f"Btw {invoice.vat_rate}% over {_eur(invoice.net)}", invoice.vat, False),
                                ("Totaal incl. btw", invoice.total, True)):
-        pdf.set_font("Helvetica", "B" if bold else "", 10)
+        pdf.set_font(FONT, "B" if bold else "", 10)
         pdf.set_x(20 + cols[0])
         pdf.cell(cols[1], 6, label)
         pdf.cell(cols[2], 6, _eur(value), align="R", new_x="LMARGIN", new_y="NEXT")
 
     pdf.ln(10)
-    pdf.set_font("Helvetica", "", 9)
+    pdf.set_font(FONT, "", 9)
     pdf.multi_cell(w, 4.6,
                    f"Dit bedrag is al betaald via Mollie (betaling {invoice.payment_id}); "
                    "je hoeft niets over te maken.\n"

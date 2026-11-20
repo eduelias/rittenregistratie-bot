@@ -36,6 +36,7 @@ class FakeMollie:
                           "details": {"consumerName": "A de Vries",
                                       "consumerAccount": "NL55INGB0001231234"}}]
         self.fail_subscriptions = False
+        self.fail_refunds = False
         self._n = 0
 
     def _id(self, prefix):
@@ -79,6 +80,12 @@ class FakeMollie:
 
     async def list_mandates(self, customer_id):
         return list(self.mandates)
+
+    async def refund_payment(self, payment_id, value, description):
+        if self.fail_refunds:
+            raise MollieError("insufficient balance", 422)
+        self.calls.append(("refund", payment_id, value))
+        return {"id": self._id("re")}
 
 
 def _settings(tmp_path, **kw):
@@ -179,15 +186,122 @@ async def test_failed_first_payment_adds_nothing(setup):
     assert not [c for c in mollie.calls if c[0] == "subscription"]
 
 
-async def test_number_already_taken_needs_attention(setup):
+async def test_a_paid_signup_for_a_number_that_has_a_car_is_refunded_not_subscribed(setup):
+    """The form sent twice and both paid: one subscription, not two."""
+    billing, mollie, _, sent = setup
+    await billing.start(dict(FORM))
+    await billing.start(dict(FORM))
+    first, second = billing.store.all()
+    for signup in (first, second):
+        mollie.payments[signup.first_payment_id]["status"] = "paid"
+    assert (await billing.sync_payment(first.first_payment_id)).status == ACTIVE
+    assert (await billing.sync_payment(second.first_payment_id)).status == FAILED
+    assert [c[0] for c in mollie.calls].count("subscription") == 1
+    assert ("refund", second.first_payment_id, "0.01") in mollie.calls
+    assert "Dubbele aanmelding" in sent[-1][1] and "terugbetaald" in sent[-1][1]
+    assert billing.can_cancel("31612345678")       # the real subscription can still be cancelled
+    await billing.sync_payment(second.first_payment_id)             # Mollie calls again
+    assert [c[0] for c in mollie.calls].count("refund") == 1
+
+
+async def test_provisioning_failure_needs_attention(setup, monkeypatch):
     billing, mollie, _, sent = setup
     await billing.start(dict(FORM))
     signup = billing.store.all()[0]
-    # Someone registered the number between the form and the payment.
-    billing.engine.handle_admin_command("approve", ["31612345678", "Other", "10"])
+
+    def boom(signup):
+        raise ValueError("cars.yaml is not writable")
+
+    monkeypatch.setattr(billing, "_provision", boom)
     mollie.payments[signup.first_payment_id]["status"] = "paid"
     assert (await billing.sync_payment(signup.first_payment_id)).status == ATTENTION
     assert "kon niet worden ingericht" in sent[-1][1]
+
+
+async def test_cancelling_within_14_days_refunds_the_mandate_payment(setup):
+    billing, mollie, _, sent = setup
+    await billing.start(dict(FORM))
+    signup = billing.store.all()[0]
+    mollie.payments[signup.first_payment_id]["status"] = "paid"
+    await billing.sync_payment(signup.first_payment_id)
+    reply = await billing.cancel("31612345678")
+    assert ("refund", signup.first_payment_id, "0.01") in mollie.calls
+    assert "teruggestort" in reply
+
+
+async def test_cancelling_after_14_days_refunds_nothing(setup):
+    billing, mollie, _, _ = setup
+    await billing.start(dict(FORM))
+    signup = billing.store.all()[0]
+    mollie.payments[signup.first_payment_id]["status"] = "paid"
+    await billing.sync_payment(signup.first_payment_id)
+    reply = await billing.cancel("31612345678", today=date.today() + timedelta(days=15))
+    assert not [c for c in mollie.calls if c[0] == "refund"] and "teruggestort" not in reply
+
+
+async def test_a_refund_mollie_refuses_is_handed_to_the_owner(setup):
+    billing, mollie, _, sent = setup
+    await billing.start(dict(FORM))
+    signup = billing.store.all()[0]
+    mollie.payments[signup.first_payment_id]["status"] = "paid"
+    await billing.sync_payment(signup.first_payment_id)
+    mollie.fail_refunds = True
+    reply = await billing.cancel("31612345678")
+    assert "teruggestort" not in reply
+    assert any("Betaal in Mollie terug" in text and signup.first_payment_id in text
+               for _, text in sent)
+
+
+async def test_a_chargeback_on_a_charge_already_seen_as_paid_is_reported(setup):
+    billing, mollie, _, sent = setup
+    await billing.start(dict(FORM))
+    signup = billing.store.all()[0]
+    mollie.payments[signup.first_payment_id]["status"] = "paid"
+    await billing.sync_payment(signup.first_payment_id)
+    signup = billing.store.all()[0]
+    mollie.payments["tr_900"] = {"id": "tr_900", "status": "paid",
+                                 "subscriptionId": signup.subscription_id}
+    await billing.sync_payment("tr_900")
+    before = len(sent)
+    await billing.sync_payment("tr_900")                            # the same news twice: nothing
+    assert len(sent) == before
+    mollie.payments["tr_900"]["amountChargedBack"] = {"value": "4.95", "currency": "EUR"}
+    await billing.sync_payment("tr_900")
+    assert "chargeback" in sent[-1][1] and "tr_900" in sent[-1][1]
+    await billing.sync_payment("tr_900")
+    assert len(sent) == before + 1
+
+
+async def test_a_cancelled_subscriber_who_never_writes_again_is_still_ended(setup):
+    billing, mollie, engine, _ = setup
+    await billing.start(dict(FORM))
+    signup = billing.store.all()[0]
+    mollie.payments[signup.first_payment_id]["status"] = "paid"
+    await billing.sync_payment(signup.first_payment_id)
+    await billing.cancel("31612345678")
+    assert billing.sweep() == 0 and engine.cars.is_registered("31612345678")
+    assert billing.sweep(today=date.today() + timedelta(days=60)) == 1
+    assert billing.store.all()[0].status == ENDED
+    assert not engine.cars.is_registered("31612345678")              # the seat is free again
+
+
+async def test_a_mollie_timeout_is_a_mollie_error():
+    import httpx
+
+    def timeout(request):
+        raise httpx.ConnectTimeout("slow", request=request)
+
+    mollie = Mollie("test_x", transport=httpx.MockTransport(timeout))
+    with pytest.raises(MollieError):
+        await mollie.get_payment("tr_1")
+
+
+@pytest.mark.parametrize("bad", ["tr_x/../../customers/cst_1/mandates", "tr_", "ord_123", "", None])
+async def test_only_a_payment_id_reaches_mollie(setup, bad):
+    billing, mollie, _, _ = setup
+    seen = []
+    mollie.get_payment = lambda pid: seen.append(pid)
+    assert await billing.sync_payment(bad) is None and seen == []
 
 
 @pytest.mark.parametrize("field,value", [
@@ -210,6 +324,8 @@ def test_parse_phone():
     assert parse_phone("+31 6 1234 5678") == "31612345678"
     assert parse_phone("0031612345678") == "31612345678"
     assert parse_phone("+32 470 12 34 56") == "32470123456"
+    for typed in ("+31 (0)6 12345678", "+31 06 12345678", "0031 (0)6 1234 5678"):
+        assert parse_phone(typed) == "31612345678", typed
 
 
 async def test_full_house_refuses_before_payment(tmp_path):
@@ -488,6 +604,22 @@ def test_cancel_form_does_not_reveal_who_is_a_customer(app, monkeypatch):
     monkeypatch.setattr(main.whatsapp, "send_auth_code", fake_code)
     page = client.post("/opzeggen", data={"phone": "06 9999 9999"}).text
     assert "code van 6" in page and not sent
+
+
+def test_the_cancel_form_does_not_wait_for_whatsapp(app, monkeypatch):
+    """Waiting would tell a stranger, by the response time, who is a customer."""
+    import time
+    client, main, fake = app
+    _activate_over_http(client, main, fake)
+
+    async def slow_code(*a, **k):
+        await asyncio.sleep(30)
+
+    monkeypatch.setattr(main.whatsapp, "send_auth_code", slow_code)
+    started = time.monotonic()
+    page = client.post("/opzeggen", data={"phone": "06 1234 5678"})
+    assert page.status_code == 200 and "code van 6" in page.text
+    assert time.monotonic() - started < 5
 
 
 def test_cancel_codes_expire_and_are_limited():

@@ -61,6 +61,9 @@ def referrer_domain(referer: str, own_host: str = "") -> str:
     return host[:60]
 
 
+MAX_KEYS = 50  # distinct paths, referrers, sources or campaigns kept per day
+
+
 class PageCounter:
     """Daily totals in ``data/analytics.json``::
 
@@ -110,7 +113,10 @@ class PageCounter:
             for key, value in (("views", path), ("referrers", ref), ("sources", source),
                                ("campaigns", campaign)):
                 if value:
-                    d.setdefault(key, {})[value] = d.get(key, {}).get(value, 0) + 1
+                    bucket = d.setdefault(key, {})
+                    if value not in bucket and len(bucket) >= MAX_KEYS:
+                        value = "other"
+                    bucket[value] = bucket.get(value, 0) + 1
         self._update(bump, today)
 
     def form(self, today: Optional[date] = None) -> None:

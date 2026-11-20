@@ -7,6 +7,7 @@ still renders but the form is replaced by a notice, and ``/aanmelden`` is 404.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import html
@@ -154,6 +155,8 @@ def _read(name: str) -> str:
 async def _form(request: Request) -> dict:
     """An urlencoded body as a dict. Both the signup form and Mollie's webhook
     are plain urlencoded posts, so this saves a python-multipart dependency."""
+    if int(request.headers.get("content-length") or 0) > 20_000:
+        return {}  # no form of ours is this large; do not read it into memory
     body = (await request.body())[:20_000].decode("utf-8", "replace")
     return dict(parse_qsl(body, keep_blank_values=True))
 
@@ -180,12 +183,15 @@ class SignupLimiter:
 
     def allow(self, ip: str) -> bool:
         now = self._clock()
-        q = self._by_ip.setdefault(ip or "?", deque())
+        for stale in [k for k, v in self._by_ip.items() if now - v[-1] > self.WINDOW]:
+            del self._by_ip[stale]  # or every address that ever posted stays in memory
+        q = self._by_ip.get(ip or "?", deque())
         self._trim(q, now)
         self._trim(self._all, now)
         if len(q) >= self.per_ip or len(self._all) >= self.total:
             return False
         q.append(now)
+        self._by_ip[ip or "?"] = q
         self._all.append(now)
         return True
 
@@ -698,6 +704,13 @@ def build_router(settings: Settings, billing: Optional[Billing], *,
             f'<p class="fine">{c["no_code"]}</p>'
         )
 
+    sending: set = set()  # keeps the send tasks alive until they finish
+
+    def _sent(task) -> None:
+        sending.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            log.error("cancel code could not be sent", exc_info=task.exception())
+
     def cancel_routes(lang: str) -> None:
         c = CANCEL[lang]
         confirm_path = f'{c["path"]}/{"bevestig" if lang == "nl" else "confirm"}'
@@ -726,10 +739,11 @@ def build_router(settings: Settings, billing: Optional[Billing], *,
             if billing is not None and send_code is not None and billing.can_cancel(phone):
                 code = codes.issue(phone)
                 if code is not None:
-                    try:
-                        await send_code(phone, code)
-                    except Exception:  # pragma: no cover
-                        log.exception("cancel code could not be sent")
+                    # Not awaited: the wait for WhatsApp would tell a stranger, by
+                    # the response time alone, which numbers are customers.
+                    task = asyncio.create_task(send_code(phone, code))
+                    sending.add(task)
+                    task.add_done_callback(_sent)
             return cancel_page(lang, code_form(lang, phone))
 
         async def confirm(request: Request) -> HTMLResponse:

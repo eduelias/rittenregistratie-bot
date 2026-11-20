@@ -95,3 +95,26 @@ def test_apply_also_forgets_language_and_last_message(settings):
     retention.apply(settings, retention.due(settings, TODAY))
     assert json.loads(settings.languages_file.read_text()) == {"31600000001": "nl"}
     assert json.loads(settings.last_inbound_file.read_text()) == {}
+
+
+def test_a_number_that_signed_up_again_keeps_its_settings(settings):
+    """The old signup comes due while the same number is a customer again."""
+    _signup(settings, "s1", "golf", "31600000003", ENDED, 120)       # 31600000003 now drives polo
+    settings.languages_file.write_text(json.dumps({"31600000003": "en"}))
+    settings.last_inbound_file.write_text(json.dumps({"31600000003": "2027-02-28T00:00:00"}))
+    (settings.data_dir / "active-car.json").write_text(json.dumps({"31600000003": "polo"}))
+    retention.apply(settings, retention.due(settings, TODAY))
+    assert not (settings.data_dir / "raw-ledger-golf.jsonl").exists()   # the old trips are gone
+    assert json.loads(settings.languages_file.read_text()) == {"31600000003": "en"}
+    assert json.loads(settings.last_inbound_file.read_text()) == {"31600000003": "2027-02-28T00:00:00"}
+    assert json.loads((settings.data_dir / "active-car.json").read_text()) == {"31600000003": "polo"}
+
+
+def test_signup_limiter_forgets_addresses_once_their_window_has_passed():
+    now = [0.0]
+    lim = SignupLimiter(per_ip=2, total=10_000, clock=lambda: now[0])
+    for i in range(500):
+        lim.allow(f"10.0.{i // 250}.{i % 250}")
+    now[0] = 3601
+    lim.allow("a")
+    assert list(lim._by_ip) == ["a"]

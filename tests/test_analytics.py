@@ -97,3 +97,14 @@ def test_cli_report(settings, monkeypatch, capsys):
     monkeypatch.setattr(config, "get_settings", lambda: settings)
     assert analytics.main(["report", "--days", "30"]) == 0
     assert "last 30 days" in capsys.readouterr().out
+
+
+def test_a_stranger_cannot_grow_the_file_with_made_up_sources(settings):
+    c = PageCounter(settings.analytics_file, "rrbot.nl")
+    for i in range(300):
+        c.view("/", user_agent=UA, today=TODAY, query=f"utm_source=x{i}&utm_campaign=y{i}",
+               referer=f"https://site{i}.example/")
+    t = c.totals(TODAY, TODAY)
+    for bucket in ("sources", "campaigns", "referrers"):
+        assert len(t[bucket]) == analytics.MAX_KEYS + 1 and t[bucket]["other"] == 300 - analytics.MAX_KEYS
+    assert t["views"] == {"/": 300}

@@ -27,12 +27,28 @@ from .site import build_router, install_not_found
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("rittenregistratie")
 
+async def _sweep_ended() -> None:
+    """Runs in the server, not a timer: ending a subscription changes the car
+    list this process holds in memory."""
+    while True:
+        try:
+            ended = _billing.sweep()
+            if ended:
+                log.info("Ended %d cancelled subscription(s) past their last day.", ended)
+        except Exception:
+            log.exception("subscription sweep failed")
+        await asyncio.sleep(6 * 3600)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    """Background work while the app runs: the WhatsApp health check."""
+    """Background work while the app runs: the WhatsApp health check, and
+    ending subscriptions whose last day has passed."""
     tasks = []
     if _settings.whatsapp_token and _settings.whatsapp_phone_number_id:
         tasks.append(asyncio.create_task(wa_health.watch(_settings, _alert_admins)))
+    if _billing is not None:
+        tasks.append(asyncio.create_task(_sweep_ended()))
     yield
     for task in tasks:
         task.cancel()

@@ -313,11 +313,15 @@ async def test_a_new_signup_never_gets_an_ended_car_id(setup):
     assert first.car_id == "golf" and second.car_id == "golf_2"
 
 
-async def test_attention_signup_gets_a_holding_reply(setup):
+async def test_attention_signup_gets_a_holding_reply(setup, monkeypatch):
     billing, mollie, _, _ = setup
     await billing.start(dict(FORM))
     signup = billing.store.all()[0]
-    billing.engine.handle_admin_command("approve", [PHONE, "Other", "10"])
+
+    def boom(signup):
+        raise ValueError("cars.yaml is not writable")
+
+    monkeypatch.setattr(billing, "_provision", boom)
     mollie.payments[signup.first_payment_id]["status"] = "paid"
     assert (await billing.sync_payment(signup.first_payment_id)).status == ATTENTION
     assert "afgerond" in await billing.handle(PHONE, "abonnement")
