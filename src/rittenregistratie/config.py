@@ -238,6 +238,15 @@ class Settings(BaseSettings):
         ]
 
 
+def write_atomic(path: Path, text: str) -> None:
+    """Replace a file in one step, so a crash or power cut mid-write leaves the
+    old content instead of an empty or half-written file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
 def load_yaml(path: Path) -> dict:
     if not path.exists():
         return {}
@@ -267,9 +276,7 @@ def save_location(path: Path, name: str, address: str, **extra) -> None:
     entry["address"] = address
     entry.update({k: v for k, v in extra.items() if v is not None})
     data[key] = entry
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as fh:
-        yaml.safe_dump(data, fh, sort_keys=True, allow_unicode=True)
+    write_atomic(path, yaml.safe_dump(data, sort_keys=True, allow_unicode=True))
 
 
 _settings: Optional[Settings] = None

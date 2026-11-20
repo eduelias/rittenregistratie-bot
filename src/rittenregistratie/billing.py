@@ -65,7 +65,7 @@ from typing import Awaitable, Callable, Dict, List, Optional, Tuple
 import httpx
 
 from .cars import add_car_to_yaml, normalize_phone, remove_car_from_yaml, slugify_car_id
-from .config import Settings
+from .config import Settings, write_atomic
 from .i18n import Key, date_text, money, render_parts, set_current, t
 
 log = logging.getLogger("rittenregistratie.billing")
@@ -171,10 +171,7 @@ class SignupStore:
     def save(self, signup: Signup) -> None:
         data = self._load()
         data[signup.id] = asdict(signup)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
-        tmp.replace(self.path)
+        write_atomic(self.path, json.dumps(data, indent=2, sort_keys=True))
 
     def all(self) -> List[Signup]:
         return [Signup(**v) for v in self._load().values()]

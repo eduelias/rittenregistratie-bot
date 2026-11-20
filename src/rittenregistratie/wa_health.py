@@ -22,7 +22,7 @@ from typing import Awaitable, Callable, List, Optional
 
 import httpx
 
-from .config import Settings
+from .config import Settings, write_atomic
 
 log = logging.getLogger("rittenregistratie.wa_health")
 
@@ -62,10 +62,7 @@ def load(path: Path) -> Optional[dict]:
 
 
 def save(path: Path, reading: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(reading, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    write_atomic(path, json.dumps(reading, indent=2))
 
 
 def changes(old: Optional[dict], new: dict) -> List[tuple]:

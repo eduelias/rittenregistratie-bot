@@ -9,6 +9,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, Optional
+from .config import write_atomic
 
 
 @dataclass
@@ -46,10 +47,7 @@ class StateStore:
         return State(**data)
 
     def save(self, state: State) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(asdict(state), indent=2, sort_keys=True), encoding="utf-8"
-        )
+        write_atomic(self.path, json.dumps(asdict(state), indent=2, sort_keys=True))
 
     def seed_if_empty(self, address: str, odometer: int) -> State:
         """Seed the first-trip origin + starting odometer if no state exists."""

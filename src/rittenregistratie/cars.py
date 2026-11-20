@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import yaml
+from .config import write_atomic
 
 
 def normalize_phone(phone: str) -> str:
@@ -184,10 +185,7 @@ def _load(path: Path) -> dict:
 
 
 def _save(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        yaml.safe_dump(data, sort_keys=True, allow_unicode=True), encoding="utf-8"
-    )
+    write_atomic(path, yaml.safe_dump(data, sort_keys=True, allow_unicode=True))
 
 
 def add_car_to_yaml(
@@ -329,10 +327,9 @@ class ActiveCarStore:
     def set(self, phone: str, car_id: str) -> None:
         data = self._load()
         data[normalize_phone(phone)] = car_id
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+        write_atomic(self.path, json.dumps(data, indent=2, sort_keys=True))
 
     def clear(self, phone: str) -> None:
         data = self._load()
         if data.pop(normalize_phone(phone), None) is not None:
-            self.path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+            write_atomic(self.path, json.dumps(data, indent=2, sort_keys=True))

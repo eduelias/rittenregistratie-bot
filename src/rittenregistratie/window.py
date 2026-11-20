@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from .cars import normalize_phone
+from .config import write_atomic
 
 MARGIN = timedelta(hours=23)
 
@@ -39,10 +40,7 @@ class InboundWindow:
         with self._lock:
             data = self._load()
             data[normalize_phone(phone)] = now.isoformat(timespec="seconds")
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
-            tmp.replace(self.path)
+            write_atomic(self.path, json.dumps(data, indent=2, sort_keys=True))
 
     def is_open(self, phone: str, now: Optional[datetime] = None) -> bool:
         last = self._load().get(normalize_phone(phone))

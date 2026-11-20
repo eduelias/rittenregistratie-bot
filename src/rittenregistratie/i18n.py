@@ -19,6 +19,7 @@ from contextvars import ContextVar
 from datetime import date
 from pathlib import Path
 from typing import Dict, Optional
+from .config import write_atomic
 
 LANGS = ("nl", "en")
 _fallback = "nl"
@@ -146,8 +147,7 @@ class LanguageStore:
         with self._lock:
             data = self._load()
             data[normalize_phone(phone)] = lang
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            self.path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+            write_atomic(self.path, json.dumps(data, indent=2, sort_keys=True))
 
 
 # key -> (Dutch, English)
