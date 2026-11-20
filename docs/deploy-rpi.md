@@ -47,8 +47,9 @@ curl -s http://127.0.0.1:8000/health   # {"status":"ok"}
 | `rittenregistratie-stats.timer` | Monday 08:30 | the weekly report to the owner |
 
 The service binds `0.0.0.0` because Home Assistant posts car trips to
-`/hooks/...` over the LAN. It runs with `ProtectSystem=strict`: it can write
-only `data/` and `config/`.
+`/hooks/...` over the LAN. It runs with `ProtectSystem=strict` and
+`ProtectHome=read-only`: it can write only `data/` and `config/` (checked on du7
+by trying to write elsewhere from inside the service's namespace).
 
 Logs go to journald. The privacy statement promises at most 30 days, so the
 host needs `MaxRetentionSec=30day` (du7: `/etc/systemd/journald.conf.d/30-retention.conf`).

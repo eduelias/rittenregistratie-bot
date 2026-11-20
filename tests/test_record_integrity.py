@@ -94,6 +94,7 @@ def test_readings_no_car_can_have_are_refused(tmp_path):
 
 def test_state_behind_the_ledger_catches_up_instead_of_logging_twice(tmp_path):
     eng = _engine(tmp_path)
+    eng.handle_text(f"{SEED + 4} Gym", PHONE, now=NOW)
     eng.handle_text(f"{SEED + 10} Office", PHONE, now=NOW)
     before = (tmp_path / "data" / "state-car.json").read_text()
     eng.handle_text(f"{SEED + 50} Home private", PHONE, now=NOW)
@@ -101,10 +102,10 @@ def test_state_behind_the_ledger_catches_up_instead_of_logging_twice(tmp_path):
     with pytest.raises(EngineError, match="Already logged"):               # the driver sends it again
         eng.handle_text(f"{SEED + 50} Home private", PHONE, now=NOW)
     assert [(r["start_odo"], r["end_odo"]) for r in _ledger(tmp_path)] == [
-        (SEED, SEED + 10), (SEED + 10, SEED + 50)]
+        (SEED, SEED + 4), (SEED + 4, SEED + 10), (SEED + 10, SEED + 50)]
     state = _state(tmp_path)
     assert (state["last_odometer"], state["last_address"]) == (SEED + 50, "Home")
-    assert state["private_km"] == {"2026": 40}
+    assert state["private_km"] == {"2026": 44}
 
 
 def test_a_failing_cap_plugin_does_not_cost_the_trip(tmp_path, monkeypatch):
@@ -119,6 +120,28 @@ def test_a_failing_cap_plugin_does_not_cost_the_trip(tmp_path, monkeypatch):
     eng.handle_text(f"{SEED + 30} Home", PHONE, now=NOW)
     assert [(r["start_odo"], r["end_odo"]) for r in _ledger(tmp_path)] == [
         (SEED, SEED + 10), (SEED + 10, SEED + 30)]
+
+
+def test_exactly_the_limit_is_still_a_normal_trip(tmp_path):
+    eng = _engine(tmp_path)
+    assert eng.handle_text(f"{SEED + 1000} Office", PHONE, now=NOW).logged
+    assert "Nothing logged" in str(eng.handle_text(f"{SEED + 2001} Home", PHONE, now=NOW))
+
+
+def test_the_first_trip_starts_at_the_seed_address(tmp_path):
+    eng = _engine(tmp_path)
+    eng.handle_text(f"{SEED + 10} Office", PHONE, now=NOW)
+    assert _ledger(tmp_path)[0]["start_address"] == "A St, Utrecht"
+
+
+def test_a_car_logged_row_says_where_it_came_from(tmp_path):
+    eng = _engine(tmp_path)
+    eng.handle_vehicle_trip(eng.cars.get("car"), VehicleTripReport(
+        end_odo=SEED + 30, zone="office", latitude=52.1, longitude=4.3, source="test"))
+    row = _ledger(tmp_path)[0]
+    assert row["note"] == "auto-logged from test"
+    assert row["raw_message"] == f"[test] end_odo={SEED + 30} at 52.10000,4.30000 zone=office"
+    assert (row["start_address"], row["end_address"]) == ("A St, Utrecht", "B St, Amsterdam")
 
 
 # ---- small rules nothing tested
