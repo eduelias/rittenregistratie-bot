@@ -595,6 +595,8 @@ CATALOG: Dict[str, tuple] = {
     "event.provision_failed": ("inrichten mislukt", "setup failed"),
     "event.charge_failed": ("betaling mislukt", "payment failed"),
     "event.cancelled": ("opzegging", "cancellation"),
+    "event.duplicate_signup": ("dubbele aanmelding", "duplicate signup"),
+    "event.refund_by_hand": ("terugbetaling nodig", "refund needed"),
     "event.paused": ("pauze", "pause"),
     "event.switch_failed": ("overstap mislukt", "plan change failed"),
     "event.switched": ("overstap", "plan change"),
@@ -620,6 +622,20 @@ CATALOG: Dict[str, tuple] = {
                             "actief; beslis zelf (verwijderen: 'remove {phone}').",
                             "Charge {payment} for {name} ({phone}, {car}) is {status}. The number "
                             "stays active; your call (remove: 'remove {phone}')."),
+    "alert.duplicate_signup": (
+        "Dubbele aanmelding {id}: {name} ({phone}) heeft al een auto. Geen tweede abonnement "
+        "gemaakt. Machtigingsbetaling: {refund}.",
+        "Duplicate signup {id}: {name} ({phone}) already has a car. No second subscription "
+        "created. Mandate payment: {refund}."),
+    "refund.done": ("terugbetaald", "refunded"),
+    "refund.failed": ("terugbetalen mislukt, doe het in Mollie", "refund failed, do it in Mollie"),
+    "refund.none": ("niets terug te betalen", "nothing to refund"),
+    "alert.refund_by_hand": (
+        "{name} ({phone}) zegde binnen 14 dagen op. Betaal in Mollie terug: {payments}.",
+        "{name} ({phone}) cancelled within 14 days. Refund in Mollie: {payments}."),
+    "sub.refunded": ("Je hebt binnen 14 dagen opgezegd: de {amount} van de machtiging wordt "
+                     "teruggestort.",
+                     "You cancelled within 14 days: the {amount} mandate payment is being refunded."),
     "alert.cancelled": ("{name} ({phone}) heeft opgezegd, actief t/m {date}.",
                         "{name} ({phone}) cancelled, active until {date}."),
     "alert.paused": ("{name} ({phone}, {car}) heeft gepauzeerd, betaald t/m {date}.",

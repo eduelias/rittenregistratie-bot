@@ -17,15 +17,12 @@ from test_billing import FORM, FakeMollie, _settings, _wa, app  # noqa: F401  (f
 COMPANY = "Buitenhof 128, 1354 GT Almere · KvK 91476003 · btw NL004896802B29"
 
 
-def pdf_text(data: bytes) -> bytes:
-    """The decompressed content streams of a PDF, for substring checks."""
-    out = b""
-    for raw in re.findall(rb"stream\r?\n(.*?)\r?\nendstream", data, re.S):
-        try:
-            out += zlib.decompress(raw)
-        except zlib.error:
-            out += raw
-    return out
+def pdf_text(data: bytes) -> str:
+    """What a reader sees: the text of every page."""
+    import io
+
+    from pypdf import PdfReader
+    return "\n".join(page.extract_text() for page in PdfReader(io.BytesIO(data)).pages)
 
 
 def test_vat_split_and_periods():
@@ -110,13 +107,13 @@ async def test_paid_charge_gets_one_numbered_invoice(paid):
     assert (inv.total, inv.net, inv.vat, inv.vat_rate) == ("4.95", "4.09", "0.86", 21)
     assert inv.company == "De Vries Advies" and inv.customer == "Anna de Vries"
     text = pdf_text(invoicing.store.pdf(inv).read_bytes())
-    for needle in (b"Factuur", b"2026-0001", b"18 november 2026", b"Du7 Technology Services",
-                   b"Buitenhof 128", b"1354 GT Almere", b"KvK 91476003", b"NL004896802B29",
-                   b"De Vries Advies", b"Anna de Vries", b"3511 AB Utrecht", b"maandabonnement",
-                   b"16-11-2026 t/m 15-12-2026", b"\x80 4,09", b"Btw 21%", b"\x80 0,86",
-                   b"\x80 4,95", b"tr_50"):
+    for needle in ("Factuur", "2026-0001", "18 november 2026", "Du7 Technology Services",
+                   "Buitenhof 128", "1354 GT Almere", "KvK 91476003", "NL004896802B29",
+                   "De Vries Advies", "Anna de Vries", "3511 AB Utrecht", "maandabonnement",
+                   "16-11-2026 t/m 15-12-2026", "€ 4,09", "Btw 21%", "€ 0,86",
+                   "€ 4,95", "tr_50"):
         assert needle in text, needle
-    assert b"TESTFACTUUR" not in text
+    assert "TESTFACTUUR" not in text
 
 
 async def test_test_mode_payments_have_their_own_series(paid):
@@ -129,7 +126,7 @@ async def test_test_mode_payments_have_their_own_series(paid):
     assert inv.number == "TEST-2026-0001" and inv.test and inv.period_end == "2027-11-15"
     assert "jaarabonnement" in inv.description
     assert InvoiceStore(invoicing.store.dir).next_number(2026, test=False) == "2026-0001"
-    assert b"TESTFACTUUR" in pdf_text(invoicing.store.pdf(inv).read_bytes())
+    assert "TESTFACTUUR" in pdf_text(invoicing.store.pdf(inv).read_bytes())
 
 
 async def test_an_invoice_error_alerts_the_admin_and_keeps_billing_going(tmp_path):
@@ -278,3 +275,14 @@ async def test_report_counts_live_invoices_only(paid):
     text = report(billing.settings, today=date(2026, 11, 20))
     assert "Invoices: 1 issued, €4.95 incl. VAT (€0.86 VAT)" in text
     assert "WhatsApp: not checked yet" in text
+
+
+@pytest.mark.parametrize("name, car", [("Emre Doğan", "Polo"), ("Łukasz Yılmaz", "Škoda"),
+                                       ("Nguyễn Văn An", "Tesla 🚗")])
+async def test_a_name_outside_western_european_still_gets_an_invoice(paid, name, car):
+    billing, mollie, invoicing, issued = paid
+    signup = await _subscriber(billing, mollie, name=name, car_label=car)
+    _charge(mollie, signup, "tr_70")
+    await billing.sync_payment("tr_70")
+    assert len(issued) == 1
+    assert name in pdf_text(invoicing.store.pdf(issued[0]).read_bytes())

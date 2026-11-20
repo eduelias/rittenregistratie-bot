@@ -74,15 +74,10 @@ def apply(settings: Settings, purges: List[Purge]) -> None:
     for p in purges:
         for f in p.files:
             f.unlink(missing_ok=True)
-        if active.exists():
-            try:
-                mapping = json.loads(active.read_text(encoding="utf-8")) or {}
-            except ValueError:
-                mapping = {}
-            if mapping.pop(normalize_phone(p.phone), None) is not None:
-                write_atomic(active, json.dumps(mapping, indent=2, sort_keys=True))
-        for path in (settings.languages_file, settings.last_inbound_file):
-            _forget(path, p.phone)
+        # Signed up again since: these now belong to the new car, not the old one.
+        if not CarRegistry(load_yaml(settings.cars_file)).is_registered(p.phone):
+            for path in (active, settings.languages_file, settings.last_inbound_file):
+                _forget(path, p.phone)
         signup = store.get(p.signup_id)
         if signup is not None:
             signup.data_deleted_at = datetime.now().isoformat(timespec="seconds")
