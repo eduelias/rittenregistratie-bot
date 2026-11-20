@@ -124,9 +124,15 @@ class Engine:
         # Optional per-user override cap plugin (only for allow-listed numbers).
         self.cap_plugin_override = None
         if settings.private_cap_plugin_override:
-            self.cap_plugin_override = registry.get_private_cap_plugin(
-                settings.private_cap_plugin_override
-            )()
+            try:
+                self.cap_plugin_override = registry.get_private_cap_plugin(
+                    settings.private_cap_plugin_override
+                )()
+            except Exception:
+                # The operator's own extra. If it cannot load, the operator loses
+                # its message; the bot must still start for everyone else.
+                log.exception("Override cap plugin %r could not be loaded; continuing without it.",
+                              settings.private_cap_plugin_override)
         # Per-car cap plugin instances (cars.yaml ``cap_plugin``), by name.
         self._cap_instances: Dict[str, object] = {}
 
