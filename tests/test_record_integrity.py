@@ -175,6 +175,13 @@ def test_a_subscriber_gets_the_plain_cap_plugin_even_when_the_setting_is_blank(t
     assert type(eng._cap_for_car(car)).__module__.endswith("privatecap_warn")
 
 
+def test_the_bot_starts_when_the_operators_own_cap_plugin_is_missing(tmp_path):
+    eng = _engine(tmp_path, private_cap_plugin_override="not_installed",
+                  private_cap_override_numbers=PHONE)
+    assert eng.cap_plugin_override is None
+    assert eng.handle_text(f"{SEED + 10} Office", PHONE, now=NOW).logged
+
+
 # ---- any input at all
 
 @given(st.text(max_size=200))

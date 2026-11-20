@@ -3,16 +3,21 @@
 # du7/dns-zone/rrbot.tf (DNS-only, so TLS-ALPN on 443 reaches Caddy).
 #
 # Public: the landing page, signup, Mollie's webhook and Meta's WhatsApp webhook.
-# Not public: /selftest (sends WhatsApp messages to any number), the FastAPI docs, and the
-# vehicle hooks (Home Assistant posts to http://192.168.2.68:8000 on the LAN).
+# Not public: the vehicle hooks (Home Assistant posts to http://192.168.2.68:8000 on the
+# LAN). Nothing else may publish port 8000: on 2026-11-20 an old Tailscale Funnel path
+# (/ritten) was found doing so, without this filter.
 
 rrbot.nl {
 	import public_site
-	@internal path /selftest /docs /docs/* /redoc /openapi.json /hooks/*
+	@internal path /hooks/*
 	handle @internal {
 		respond 404
 	}
 	handle {
+		# The largest real post is Meta's webhook, a few KB.
+		request_body {
+			max_size 1MB
+		}
 		reverse_proxy 127.0.0.1:8000
 	}
 }

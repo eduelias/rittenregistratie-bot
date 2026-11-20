@@ -15,52 +15,73 @@ GRAPH_VERSION = "v25.0"
 GRAPH_URL = f"https://graph.facebook.com/{GRAPH_VERSION}"
 
 
-def verify_signature(app_secret: str, payload: bytes, header: str) -> bool:
-    """Verify the X-Hub-Signature-256 header from Meta."""
+def verify_signature(app_secret: str, payload: bytes, header: str,
+                     allow_unsigned: bool = False) -> bool:
+    """Verify the X-Hub-Signature-256 header from Meta.
+
+    Without an app secret nothing can be verified, and every request is
+    refused: a mistyped variable name must not open the admin commands to
+    anyone who can post JSON. ``allow_unsigned`` is for local development."""
     if not app_secret:
-        return True  # verification disabled (e.g. local dev)
+        return allow_unsigned
     if not header or not header.startswith("sha256="):
         return False
     expected = hmac.new(
         app_secret.encode("utf-8"), payload, hashlib.sha256
     ).hexdigest()
-    return hmac.compare_digest(expected, header.split("=", 1)[1])
+    # bytes: compare_digest raises on a non-ASCII str, which would be a 500
+    return hmac.compare_digest(expected.encode(), header.split("=", 1)[1].encode("utf-8"))
 
 
-def extract_message(body: dict) -> Optional[dict]:
-    """Return a dict describing the first message.
-
-    Keys: ``from``, ``id`` (the WhatsApp message id, used to react to the
-    message); and one of ``text`` (str) or ``location`` ({latitude, longitude,
-    address?, name?}). For non-text/non-location types, ``text`` is None.
-    """
+def _values(body: dict) -> list:
+    """Every ``entry[].changes[].value`` of a webhook payload. Meta may batch
+    several entries, changes and messages into one delivery."""
+    out = []
     try:
-        change = body["entry"][0]["changes"][0]["value"]
-        messages = change.get("messages")
-        if not messages:
-            return None
-        msg = messages[0]
-        sender = msg.get("from")
-        msg_id = msg.get("id")
-        mtype = msg.get("type")
-        if mtype == "text":
-            return {"from": sender, "id": msg_id, "text": msg["text"]["body"]}
-        if mtype == "location":
-            loc = msg.get("location", {})
-            return {
-                "from": sender,
-                "id": msg_id,
-                "text": None,
-                "location": {
-                    "latitude": loc.get("latitude"),
-                    "longitude": loc.get("longitude"),
-                    "address": loc.get("address"),
-                    "name": loc.get("name"),
-                },
-            }
-        return {"from": sender, "id": msg_id, "text": None}
-    except (KeyError, IndexError, TypeError):
-        return None
+        for entry in body.get("entry") or []:
+            for change in entry.get("changes") or []:
+                if isinstance(change.get("value"), dict):
+                    out.append(change["value"])
+    except (AttributeError, TypeError):
+        pass
+    return out
+
+
+# Not something the driver wrote to the bot: answering these with the usage
+# text sent an instruction after every thumbs-up.
+_NOT_MESSAGES = frozenset({"reaction", "unsupported", "system"})
+
+
+def extract_messages(body: dict) -> list:
+    """Every inbound message of a payload, in order.
+
+    Each is a dict with ``from``, ``id`` (the WhatsApp message id, used to
+    react to the message) and one of ``text`` (str) or ``location``
+    ({latitude, longitude, address?, name?}). For other types (image, audio,
+    button, ...) ``text`` is None. Reactions and system notices are left out.
+    """
+    out = []
+    for value in _values(body):
+        for msg in value.get("messages") or []:
+            try:
+                mtype = msg.get("type")
+                if mtype in _NOT_MESSAGES:
+                    continue
+                item = {"from": msg.get("from"), "id": msg.get("id"), "text": None}
+                if mtype == "text":
+                    item["text"] = msg["text"]["body"]
+                elif mtype == "location":
+                    loc = msg.get("location", {})
+                    item["location"] = {
+                        "latitude": loc.get("latitude"),
+                        "longitude": loc.get("longitude"),
+                        "address": loc.get("address"),
+                        "name": loc.get("name"),
+                    }
+                out.append(item)
+            except (KeyError, AttributeError, TypeError):
+                continue
+    return out
 
 
 def extract_waba_id(body: dict) -> Optional[str]:
@@ -84,17 +105,17 @@ def extract_statuses(body: dict) -> list:
     """
     out = []
     try:
-        change = body["entry"][0]["changes"][0]["value"]
-        for s in change.get("statuses", []) or []:
-            errs = s.get("errors") or []
-            out.append({
-                "id": s.get("id"),
-                "status": s.get("status"),
-                "recipient": s.get("recipient_id"),
-                "error": (errs[0].get("title") if errs else None),
-                "code": (errs[0].get("code") if errs else None),
-            })
-    except (KeyError, IndexError, TypeError):
+        for change in _values(body):
+            for s in change.get("statuses", []) or []:
+                errs = s.get("errors") or []
+                out.append({
+                    "id": s.get("id"),
+                    "status": s.get("status"),
+                    "recipient": s.get("recipient_id"),
+                    "error": (errs[0].get("title") if errs else None),
+                    "code": (errs[0].get("code") if errs else None),
+                })
+    except (KeyError, IndexError, TypeError, AttributeError):
         pass
     return out
 

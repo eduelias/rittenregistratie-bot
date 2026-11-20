@@ -69,8 +69,8 @@ optionally `route`, `private_detour_km`, `note`, `destination_raw`,
 `raw_message`, `sender` (the reporting phone, source of the Bestuurder column;
 empty for older and vehicle-logged trips). The core validates the returned list (types, `end >= start`,
 sorted by odometer) and holds it to the ledger: the year's first and last
-reading must be unchanged, every row must start where the previous one ended,
-and every row must fall in the exported year. A plugin may relabel or split
+reading must be unchanged, the rows must cover at least the kilometres the
+ledger covers, and every row must fall in the exported year. A plugin may relabel or split
 rows, never change what the car drove. If a check fails, or a plugin the car
 names is not installed, the export is aborted with an error to the user. The raw ledger is never modified by an export.
 

@@ -58,7 +58,7 @@ comfortably on a Raspberry Pi.
   needs something or has extra information.
 - **Plugin system** — swap odometer source, trajectory provider and private-cap
   reporting via entry points; the core stays a faithful recorder.
-- **Self-hosted** — FastAPI + WhatsApp Cloud API, exposed via Cloudflare Tunnel,
+- **Self-hosted** — FastAPI + WhatsApp Cloud API behind a reverse proxy (Caddy),
   runs great on a Raspberry Pi.
 - **`ping` → `pong`** connectivity check built in.
 
@@ -337,7 +337,7 @@ See `docs/plugins.md`.
   <img src="docs/assets/architecture.svg" alt="rittenregistratie-bot architecture" width="100%">
 </p>
 
-Your WhatsApp message → Meta Cloud API → Cloudflare Tunnel → the FastAPI webhook
+Your WhatsApp message → Meta Cloud API → your reverse proxy → the FastAPI webhook
 on your Raspberry Pi. The parser turns it into a trip, the core Engine resolves
 the car, updates state and appends a compliant Excel row, then replies. Plugin
 entry points let you swap the odometer source, trajectory provider and
@@ -353,12 +353,12 @@ pytest -q
 uvicorn rittenregistratie.main:app --host 0.0.0.0 --port 8000
 ```
 
-Then expose port 8000 to Meta with Cloudflare Tunnel (`deploy/cloudflared.md`)
-and register the webhook. Run it as a service with `deploy/rittenregistratie.service`.
+Then publish it to Meta over HTTPS (`docs/deploy-rpi.md` uses Caddy) and register
+the webhook. Run it as a service with `deploy/rittenregistratie.service`.
 
 ### Run as a systemd service
 
-`deploy/rittenregistratie.service` runs uvicorn on `127.0.0.1:8000` as your
+`deploy/rittenregistratie.service` runs uvicorn on port 8000 as your
 user. Adjust `User`, `Group` and the paths to match your host, then:
 
 ```bash

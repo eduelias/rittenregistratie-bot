@@ -38,7 +38,10 @@ class InboundWindow:
         """Record an inbound message from ``phone``."""
         now = now or datetime.now()
         with self._lock:
-            data = self._load()
+            # Only the last day matters; older entries (and every stranger who
+            # ever wrote) are not kept.
+            data = {p: seen for p, seen in self._load().items()
+                    if now - datetime.fromisoformat(seen) < timedelta(hours=48)}
             data[normalize_phone(phone)] = now.isoformat(timespec="seconds")
             write_atomic(self.path, json.dumps(data, indent=2, sort_keys=True))
 

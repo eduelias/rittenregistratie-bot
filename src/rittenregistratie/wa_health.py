@@ -70,7 +70,9 @@ def changes(old: Optional[dict], new: dict) -> List[tuple]:
     if not old:
         return []
     out = []
-    if _RANK.get(new["quality"], 0) < _RANK.get(old.get("quality"), 0):
+    # UNKNOWN is "Meta did not say", not a drop.
+    if (new["quality"] != "UNKNOWN"
+            and _RANK.get(new["quality"], 0) < _RANK.get(old.get("quality"), 0)):
         out.append(("alert.wa_quality", {"old": old["quality"], "new": new["quality"]}))
     if new["tier"] != old.get("tier") and "UNKNOWN" not in (new["tier"], old.get("tier")):
         out.append(("alert.wa_tier", {"old": old.get("tier"), "new": new["tier"]}))
@@ -96,7 +98,10 @@ async def check(settings: Settings, alert: Alert,
 
 async def watch(settings: Settings, alert: Alert) -> None:  # pragma: no cover - a loop
     while True:
-        await check(settings, alert)
+        try:
+            await check(settings, alert)
+        except Exception:  # a full disk or a failed alert must not end the watch for good
+            log.exception("WhatsApp health check crashed")
         await asyncio.sleep(INTERVAL_S)
 
 

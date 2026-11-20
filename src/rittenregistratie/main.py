@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
+import json
 import logging
+from collections import deque
 import re
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
-from starlette.background import BackgroundTask
+from starlette.background import BackgroundTask, BackgroundTasks
 
 from . import wa_health, whatsapp
 from .config import get_settings
@@ -25,6 +28,9 @@ from .parser import ParseError
 from .site import build_router, install_not_found
 
 logging.basicConfig(level=logging.INFO)
+# httpx logs every request URL at INFO. The geocoding URL carries the API key
+# and the coordinates, and the privacy statement says neither is logged.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("rittenregistratie")
 
 async def _sweep_ended() -> None:
@@ -54,8 +60,23 @@ async def _lifespan(app: FastAPI):
         task.cancel()
 
 
-app = FastAPI(title="rittenregistratie-bot", lifespan=_lifespan)
+# No /docs, /redoc or /openapi.json: this is a public site, not an API for others.
+app = FastAPI(title="rittenregistratie-bot", lifespan=_lifespan,
+              docs_url=None, redoc_url=None, openapi_url=None)
 _settings = get_settings()
+if not _settings.whatsapp_app_secret:
+    log.critical("RIT_WHATSAPP_APP_SECRET is not set: %s", "accepting unsigned webhooks "
+                 "(RIT_WHATSAPP_ALLOW_UNSIGNED)" if _settings.whatsapp_allow_unsigned
+                 else "every webhook will be refused")
+
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")  # the signup and cancel forms
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return response
 _engine = Engine(_settings)
 
 
@@ -233,39 +254,6 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
-@app.get("/selftest")
-async def selftest(to: str = "") -> dict:
-    """Send a test WhatsApp message and report the raw Graph API result.
-
-    Use ?to=<E.164 without +> to override the recipient; defaults to the
-    configured allowed sender. Helps confirm whether a recipient is allow-listed
-    on a Meta test number (success vs error 131037) without logging any trip.
-    """
-    import httpx
-
-    recipient = to or _settings.allowed_sender
-    if not recipient:
-        return {"ok": False, "error": "no recipient; pass ?to=<number>"}
-    if not (_settings.whatsapp_token and _settings.whatsapp_phone_number_id):
-        return {"ok": False, "error": "whatsapp token/phone id not configured"}
-    url = (
-        f"https://graph.facebook.com/{_settings.whatsapp_graph_version}/"
-        f"{_settings.whatsapp_phone_number_id}/messages"
-    )
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.post(
-            url,
-            headers={"Authorization": f"Bearer {_settings.whatsapp_token}"},
-            json={
-                "messaging_product": "whatsapp",
-                "to": recipient,
-                "type": "text",
-                "text": {"body": "selftest: bot -> you. If you see this, replies work."},
-            },
-        )
-    return {"ok": resp.status_code < 400, "status": resp.status_code, "body": resp.json()}
-
-
 @app.post("/hooks/{plugin}/{car_id}")
 async def vehicle_hook(plugin: str, car_id: str, request: Request) -> Response:
     """Inbound vehicle-telemetry post for one car, handled by one plugin.
@@ -275,7 +263,8 @@ async def vehicle_hook(plugin: str, car_id: str, request: Request) -> Response:
     the car's numbers. Protected by ``X-Hook-Secret`` == RIT_HOOK_SECRET.
     """
     secret = _settings.hook_secret
-    if not secret or request.headers.get("X-Hook-Secret", "") != secret:
+    given = request.headers.get("X-Hook-Secret", "")
+    if not secret or not hmac.compare_digest(given.encode("utf-8"), secret.encode("utf-8")):
         return JSONResponse({"error": "forbidden"}, status_code=403)
     car = _engine.cars.get(car_id)
     if car is None:
@@ -368,10 +357,14 @@ async def verify(request: Request) -> Response:
 async def webhook(request: Request) -> Response:
     raw = await request.body()
     sig = request.headers.get("X-Hub-Signature-256", "")
-    if not whatsapp.verify_signature(_settings.whatsapp_app_secret, raw, sig):
+    if not whatsapp.verify_signature(_settings.whatsapp_app_secret, raw, sig,
+                                     _settings.whatsapp_allow_unsigned):
         return Response(status_code=403, content="Bad signature")
 
-    body = await request.json()
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        return Response(status_code=400, content="Not JSON")
 
     global _waba_logged
     if not _waba_logged:
@@ -395,16 +388,39 @@ async def webhook(request: Request) -> Response:
                     "template; the trip itself was recorded."
                 )
         else:
-            log.info(
-                "Message %s to %s: %s",
-                st.get("id"), st.get("recipient"), st.get("status"),
-            )
+            # No number here: the processing register says a phone number is
+            # logged only when a delivery fails.
+            log.info("Message %s: %s", st.get("id"), st.get("status"))
 
-    msg = whatsapp.extract_message(body)
-    # Always 200 quickly so Meta does not retry.
-    if not msg or not msg.get("from"):
-        return Response(status_code=200, content="ok")
+    # Always 200, also when a message fails: Meta retries anything else for
+    # days, and a retried 'opzeggen' or 'approve' would run a second time.
+    background = BackgroundTasks()
+    for msg in whatsapp.extract_messages(body):
+        if not msg.get("from"):
+            continue
+        if msg.get("id"):
+            if msg["id"] in _handled_ids:
+                continue  # a delivery Meta repeated
+            _handled_ids.append(msg["id"])
+        try:
+            response = await _handle_message(msg)
+            if response.background is not None:
+                background.tasks.append(response.background)
+        except Exception:
+            log.exception("Message %s could not be handled", msg.get("id"))
+            try:
+                await _send_all(msg["from"], t("trip.internal"), [])
+            except Exception:  # pragma: no cover - the send failed too; it is logged
+                log.exception("and the error reply could not be sent")
+    return Response(status_code=200, content="ok", background=background)
 
+
+# The last message ids handled, so a delivery Meta repeats is not run twice.
+_handled_ids: deque = deque(maxlen=500)
+
+
+async def _handle_message(msg: dict) -> Response:
+    """One inbound message, start to finish."""
     sender = msg["from"]
     message_id = msg.get("id")
     location = msg.get("location")

@@ -166,14 +166,16 @@ class ExportService:
         if not rows:
             raise ExportError("export.pre_generate handler returned no trips")
         # A plugin may relabel or split rows, never change what the car drove:
-        # same first and last reading as the ledger, no km skipped, same year.
+        # same first and last reading as the ledger, no recorded km dropped (an
+        # older ledger can have gaps of its own, so this compares totals, not
+        # each join), same year.
         recorded = validate_trips(trips)
         if (rows[0]["start_odo"], rows[-1]["end_odo"]) != (
                 recorded[0]["start_odo"], recorded[-1]["end_odo"]):
             raise ExportError("plugin changed the year's first or last odometer reading")
-        for prev, cur in zip(rows, rows[1:]):
-            if cur["start_odo"] != prev["end_odo"]:
-                raise ExportError(f"plugin left a gap in the readings at {prev['end_odo']}")
+        km = lambda rs: sum(r["end_odo"] - r["start_odo"] for r in rs)  # noqa: E731
+        if km(rows) < km(recorded):
+            raise ExportError(f"plugin dropped {km(recorded) - km(rows)} km the ledger has")
         if any(int(r["timestamp"][:4]) != year for r in rows):
             raise ExportError(f"plugin returned a row outside {year}")
 
