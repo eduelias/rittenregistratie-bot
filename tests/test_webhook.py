@@ -154,6 +154,8 @@ def test_verify_signature():
     assert not verify_signature("s3cret", raw, _signed("other", raw))
     assert not verify_signature("s3cret", raw + b" ", _signed("s3cret", raw))   # body changed
     assert not verify_signature("s3cret", raw, "")
+    assert not verify_signature("s3cret", raw, "abc")                          # no "=" at all
+    assert not verify_signature("s3cret", raw, "md5=" + _signed("s3cret", raw)[7:])
     assert not verify_signature("s3cret", raw, "sha256=é")                     # no crash
     # Nothing to check against: refused, unless development says otherwise.
     assert not verify_signature("", raw, _signed("", raw))

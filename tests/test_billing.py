@@ -229,14 +229,64 @@ async def test_cancelling_within_14_days_refunds_the_mandate_payment(setup):
     assert "teruggestort" in reply
 
 
-async def test_cancelling_after_14_days_refunds_nothing(setup):
+@pytest.mark.parametrize("days, refunded", [(14, True), (15, False)])
+async def test_the_withdrawal_period_is_14_days_to_the_day(setup, days, refunded):
     billing, mollie, _, _ = setup
     await billing.start(dict(FORM))
     signup = billing.store.all()[0]
     mollie.payments[signup.first_payment_id]["status"] = "paid"
     await billing.sync_payment(signup.first_payment_id)
-    reply = await billing.cancel("31612345678", today=date.today() + timedelta(days=15))
-    assert not [c for c in mollie.calls if c[0] == "refund"] and "teruggestort" not in reply
+    reply = await billing.cancel("31612345678", today=date.today() + timedelta(days=days))
+    assert bool([c for c in mollie.calls if c[0] == "refund"]) is refunded
+    assert ("teruggestort" in reply) is refunded
+
+
+async def test_a_subscription_charge_inside_the_14_days_is_handed_to_the_owner(setup):
+    """With a shorter trial a real charge can fall inside the withdrawal period."""
+    billing, mollie, _, sent = setup
+    await billing.start(dict(FORM))
+    signup = billing.store.all()[0]
+    mollie.payments[signup.first_payment_id]["status"] = "paid"
+    await billing.sync_payment(signup.first_payment_id)
+    signup = billing.store.all()[0]
+    mollie.payments["tr_901"] = {"id": "tr_901", "status": "paid",
+                                 "subscriptionId": signup.subscription_id}
+    await billing.sync_payment("tr_901")
+    await billing.cancel("31612345678")
+    by_hand = [text for _, text in sent if "Betaal in Mollie terug" in text]
+    assert len(by_hand) == 1 and "tr_901" in by_hand[0]
+    assert signup.first_payment_id not in by_hand[0]          # that one was refunded
+
+
+async def test_nothing_is_refunded_without_a_payment_or_twice(setup):
+    billing, mollie, _, _ = setup
+    await billing.start(dict(FORM))
+    signup = billing.store.all()[0]
+    paid, signup.first_payment_id = signup.first_payment_id, ""
+    assert await billing._refund(signup, "x") == "none" and not mollie.calls[2:]
+    signup.first_payment_id = paid
+    assert await billing._refund(signup, "x") == "done"
+    assert await billing._refund(signup, "x") == "none"
+    assert [c[0] for c in mollie.calls].count("refund") == 1
+
+
+async def test_an_english_signup_gets_an_english_bot_unless_the_number_chose_already(setup):
+    billing, mollie, engine, _ = setup
+    await billing.start(dict(FORM, lang="en"))
+    signup = billing.store.all()[0]
+    mollie.payments[signup.first_payment_id]["status"] = "paid"
+    await billing.sync_payment(signup.first_payment_id)
+    assert engine.languages.get("31612345678") == "en"
+
+
+async def test_a_number_that_chose_dutch_keeps_it_after_an_english_signup(setup):
+    billing, mollie, engine, _ = setup
+    engine.languages.set("31612345678", "nl")
+    await billing.start(dict(FORM, lang="en"))
+    signup = billing.store.all()[0]
+    mollie.payments[signup.first_payment_id]["status"] = "paid"
+    await billing.sync_payment(signup.first_payment_id)
+    assert engine.languages.get("31612345678") == "nl"
 
 
 async def test_a_refund_mollie_refuses_is_handed_to_the_owner(setup):

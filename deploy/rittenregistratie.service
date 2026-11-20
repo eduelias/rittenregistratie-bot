@@ -20,6 +20,9 @@ RestartSec=3
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
+# strict leaves /home, /root and /run/user to ProtectHome; without this line
+# the whole home folder, where this service lives, stayed writable.
+ProtectHome=read-only
 ReadWritePaths=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/data
 ReadWritePaths=/home/esaleh/reps/du7/trip-logger/rittenregistratie-bot/config
 # The user is in the docker group; the public process must not reach Docker.
