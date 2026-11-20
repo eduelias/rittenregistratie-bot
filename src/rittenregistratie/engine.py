@@ -18,11 +18,13 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .cars import ActiveCarStore, Car, CarRegistry, normalize_phone, set_car_details_yaml
-from .config import Settings, load_yaml, save_location
+from .cars import (
+    ActiveCarStore, Car, CarRegistry, car_ids_on_disk, normalize_phone, set_car_details_yaml,
+)
+from .config import MAX_ODOMETER, Settings, load_yaml, save_location
 from .events import EventBus, load_event_plugins
 from .i18n import Key, LanguageStore, render_parts, set_default, t
-from .export import ExportService
+from .export import EXPORT_PRE_GENERATE, ExportError, ExportService
 from .models import (
     ParsedMessage,
     Reply,
@@ -148,7 +150,14 @@ class Engine:
             if car is not None and car.is_subscriber:
                 selection = self._subscriber_plugins(car, selection)
             bus = EventBus()
-            self.loaded_event_plugins[car_id] = load_event_plugins(bus, selection)
+            loaded = load_event_plugins(bus, selection)
+            self.loaded_event_plugins[car_id] = loaded
+            missing = sorted(set(selection or []) - set(loaded))
+            if missing:
+                # Without this the export would quietly be the plain ledger.
+                def refuse(payload, missing=missing):
+                    raise ExportError("event plugin not loaded: " + ", ".join(missing))
+                bus.on(EXPORT_PRE_GENERATE, refuse)
             self._buses[car_id] = bus
         return bus
 
@@ -390,6 +399,10 @@ class Engine:
         now = report.ended_at or datetime.now()
         store = StateStore(self.settings.state_file(car.car_id))
         state = store.seed_if_empty(car.seed_address, car.seed_odometer)
+        if report.end_odo > MAX_ODOMETER:
+            log.warning("Car %s: reading %s from %s is not an odometer; ignored.",
+                        car.car_id, report.end_odo, report.source or "vehicle")
+            return None
         if report.end_odo <= state.last_odometer:
             return None  # already logged (manually or by an earlier event), or 0 km
 
@@ -464,7 +477,8 @@ class Engine:
         """The private-cap plugin for a car: ``cap_plugin`` from cars.yaml if
         set; else the legacy per-number override; else the default. A
         subscriber's car always gets RIT_SUBSCRIBER_CAP_PLUGIN."""
-        name = self.settings.subscriber_cap_plugin if car.is_subscriber else car.cap_plugin
+        name = ((self.settings.subscriber_cap_plugin or "warn") if car.is_subscriber
+                else car.cap_plugin)
         if name:
             inst = self._cap_instances.get(name)
             if inst is None:
@@ -562,7 +576,8 @@ class Engine:
                 return t("admin.no_seed")
             if len(self.cars.all()) >= self.settings.max_users:
                 return t("admin.full", max=self.settings.max_users)
-            existing = [c.car_id for c in self.cars.all()]
+            existing = sorted({c.car_id for c in self.cars.all()}
+                              | car_ids_on_disk(self.settings.data_dir))
             car_id = slugify_car_id(label, existing)
             try:
                 add_car_to_yaml(
@@ -647,6 +662,11 @@ class Engine:
             )
 
         parsed: ParsedMessage = parse_message(text)
+        if parsed.end_odo > MAX_ODOMETER:
+            raise EngineError(t("trip.too_high", label=car.label, odo=parsed.end_odo))
+        # A place marked private in the location book makes the trip private,
+        # typed or car-logged alike.
+        is_private = parsed.is_private or self.book(car).is_private_place(parsed.destination)
 
         # The odometer has not moved, so whatever this is, it is not a trip.
         # Repeating the last reading and place is a duplicate; repeating the
@@ -668,15 +688,25 @@ class Engine:
             raise EngineError(t("trip.lower", label=car.label, odo=parsed.end_odo,
                                 last=state.last_odometer))
 
+        # A jump this large is a typo (232020 for 23202) far more often than a
+        # trip, and the append-only ledger cannot take a reading back: log
+        # nothing until the same reading arrives a second time.
+        jump = parsed.end_odo - state.last_odometer
+        if jump > self.settings.confirm_trip_km and state.unconfirmed_odo != parsed.end_odo:
+            state.unconfirmed_odo = parsed.end_odo
+            store.save(state)
+            return Reply(t("trip.confirm_far", label=car.label, odo=parsed.end_odo,
+                           last=state.last_odometer, km=jump))
+
         # Unknown, non-private destination without an address: ask for it.
         if (
-            not parsed.is_private
+            not is_private
             and not self.book(car).is_known(parsed.destination)
         ):
             state.pending = {
                 "end_odo": parsed.end_odo,
                 "destination": parsed.destination,
-                "is_private": parsed.is_private,
+                "is_private": is_private,
                 "note": parsed.note,
                 "raw": parsed.raw,
                 "sender": normalize_phone(sender),
@@ -688,7 +718,7 @@ class Engine:
             car, store, state, now,
             end_odo=parsed.end_odo,
             destination=parsed.destination,
-            is_private=parsed.is_private,
+            is_private=is_private,
             note=parsed.note,
             raw_message=parsed.raw,
             sender=sender,
@@ -770,6 +800,9 @@ class Engine:
         self._learn(car, destination, address)
         state.pending = None
         store.save(state)
+        if pending["end_odo"] <= state.last_odometer:
+            # The car logged this drive (or a later one) while the address was awaited.
+            return Reply(t("trip.already", label=car.label, odo=state.last_odometer))
         return self._commit_trip(
             car, store, state, now,
             end_odo=pending["end_odo"],
@@ -788,6 +821,25 @@ class Engine:
         learned: str = "", note: str = "", raw_message: str = "",
         sender: str = "",
     ) -> str:
+        from .raw_ledger import RawLedger, RawTrip
+        ledger = RawLedger(self.settings.raw_ledger_file(car.car_id))
+        rows = ledger.read_all()
+        if rows and rows[-1].end_odo > state.last_odometer:
+            # A crash between the ledger append and the state save left the state
+            # one trip behind. The ledger is the record: catch up, so the resent
+            # message is recognised instead of written a second time.
+            log.warning("Car %s: state was behind the ledger (%s < %s); caught up.",
+                        car.car_id, state.last_odometer, rows[-1].end_odo)
+            state.last_odometer, state.last_address = rows[-1].end_odo, rows[-1].destination_raw
+            state.private_km = {}
+            for row in rows:
+                if row.is_private:
+                    state.add_private(int(row.timestamp[:4]), row.end_odo - row.start_odo)
+            store.save(state)
+        if end_odo <= state.last_odometer:  # never a zero or negative row, whoever calls
+            raise EngineError(t("trip.already" if end_odo == state.last_odometer else "trip.lower",
+                                label=car.label, odo=end_odo, last=state.last_odometer))
+
         origin_name = state.last_address or car.seed_address
         start_odo = state.last_odometer
         trip_km = end_odo - start_odo
@@ -829,8 +881,7 @@ class Engine:
         # The append-only raw ledger is the only store. Every trip is written
         # exactly as reported; spreadsheets are generated from it on request
         # and this file is never modified after writing.
-        from .raw_ledger import RawLedger, RawTrip
-        RawLedger(self.settings.raw_ledger_file(car.car_id)).append(RawTrip(
+        ledger.append(RawTrip(
             timestamp=now.isoformat(timespec="seconds"),
             start_odo=start_odo,
             end_odo=end_odo,
@@ -843,19 +894,26 @@ class Engine:
             sender=normalize_phone(sender),
         ))
 
+        # The state follows the ledger at once: anything that fails after this
+        # (a plugin, the reply) must not leave the two apart.
         state.last_odometer = end_odo
         state.last_address = destination
-
-        cap = self._cap_for_car(car).on_evaluate(
-            now.year, private_ytd, self.settings.private_cap_km, [trip],
-            context={
-                "data_dir": self.settings.data_dir,
-                "config_dir": self.settings.config_dir,
-                "car_id": car.car_id,
-                "year": now.year,
-            },
-        )
+        state.unconfirmed_odo = None
         store.save(state)
+
+        try:
+            cap = self._cap_for_car(car).on_evaluate(
+                now.year, private_ytd, self.settings.private_cap_km, [trip],
+                context={
+                    "data_dir": self.settings.data_dir,
+                    "config_dir": self.settings.config_dir,
+                    "car_id": car.car_id,
+                    "year": now.year,
+                },
+            )
+        except Exception:  # the trip is logged; a cap plugin bug only costs its message
+            log.exception("Cap plugin failed for car %s", car.car_id)
+            cap = None
 
         parts: list = [
             ("trip.summary", {"label": car.label, "origin": origin_name, "destination": destination,

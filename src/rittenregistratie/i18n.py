@@ -19,6 +19,7 @@ from contextvars import ContextVar
 from datetime import date
 from pathlib import Path
 from typing import Dict, Optional
+from .config import write_atomic
 
 LANGS = ("nl", "en")
 _fallback = "nl"
@@ -146,8 +147,7 @@ class LanguageStore:
         with self._lock:
             data = self._load()
             data[normalize_phone(phone)] = lang
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            self.path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+            write_atomic(self.path, json.dumps(data, indent=2, sort_keys=True))
 
 
 # key -> (Dutch, English)
@@ -234,6 +234,17 @@ CATALOG: Dict[str, tuple] = {
                         "the odometer has not moved since."),
     "trip.lower": ("[{label}] kilometerstand {odo} is lager dan de laatst vastgelegde {last}.",
                    "[{label}] odometer {odo} is lower than last recorded {last}."),
+    "trip.too_high": ("[{label}] {odo} is geen kilometerstand. Controleer het getal en stuur "
+                      "het opnieuw.",
+                      "[{label}] {odo} is not an odometer reading. Check the number and send "
+                      "it again."),
+    "trip.confirm_far": (
+        "[{label}] Kilometerstand {odo} is {km} km hoger dan de laatst vastgelegde {last}. "
+        "Niets vastgelegd.\nTypfout? Stuur de juiste stand. Klopt het? Stuur hetzelfde bericht "
+        "nog een keer, dan leg ik de rit vast.",
+        "[{label}] Odometer {odo} is {km} km above the last recorded {last}. Nothing logged.\n"
+        "A typo? Send the right reading. Correct? Send the same message again and I will "
+        "log the trip."),
     "trip.ask_address": (
         "Ik heb nog geen adres voor '{destination}'.\n"
         "Antwoord met het volledige adres, de naam van een bekende plek, of deel de locatie "

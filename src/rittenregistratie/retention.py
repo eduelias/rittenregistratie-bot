@@ -26,7 +26,7 @@ from typing import List, Optional
 
 from .billing import ENDED, SignupStore
 from .cars import CarRegistry, normalize_phone
-from .config import Settings, load_yaml
+from .config import Settings, load_yaml, write_atomic
 
 
 @dataclass
@@ -80,7 +80,7 @@ def apply(settings: Settings, purges: List[Purge]) -> None:
             except ValueError:
                 mapping = {}
             if mapping.pop(normalize_phone(p.phone), None) is not None:
-                active.write_text(json.dumps(mapping, indent=2, sort_keys=True), encoding="utf-8")
+                write_atomic(active, json.dumps(mapping, indent=2, sort_keys=True))
         for path in (settings.languages_file, settings.last_inbound_file):
             _forget(path, p.phone)
         signup = store.get(p.signup_id)
@@ -99,7 +99,7 @@ def _forget(path: Path, phone: str) -> None:
     except ValueError:
         return
     if data.pop(normalize_phone(phone), None) is not None:
-        path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+        write_atomic(path, json.dumps(data, indent=2, sort_keys=True))
 
 
 def main(argv: Optional[List[str]] = None) -> int:

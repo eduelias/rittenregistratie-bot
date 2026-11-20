@@ -37,7 +37,7 @@ from zoneinfo import ZoneInfo
 
 from .billing import Signup
 from .cars import normalize_phone
-from .config import Settings
+from .config import Settings, write_atomic
 from .i18n import date_text, money, t
 
 log = logging.getLogger("rittenregistratie.invoices")
@@ -148,9 +148,7 @@ class InvoiceStore:
             raise ValueError(f"invoice {invoice.number} exists")
         self.pdf(invoice).write_bytes(pdf)
         data[invoice.number] = asdict(invoice)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
-        tmp.replace(self.path)
+        write_atomic(self.path, json.dumps(data, indent=2, sort_keys=True))
 
 
 # --- the PDF ------------------------------------------------------------------

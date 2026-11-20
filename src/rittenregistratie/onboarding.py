@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from .cars import add_car_to_yaml, normalize_phone, slugify_car_id
+from .config import write_atomic
 
 
 @dataclass
@@ -42,8 +43,7 @@ class OnboardingStore:
         return json.loads(self.path.read_text(encoding="utf-8"))
 
     def _save(self, data: Dict[str, dict]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+        write_atomic(self.path, json.dumps(data, indent=2, sort_keys=True))
 
     def add(self, phone: str, first_message: str) -> bool:
         """Record a pending request. Returns True if newly added."""

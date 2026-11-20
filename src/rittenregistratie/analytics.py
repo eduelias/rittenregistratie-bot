@@ -33,7 +33,7 @@ from .billing import (
     ACTIVE, ATTENTION, CANCELED, ENDED, FAILED, PAUSED, PENDING, Signup, SignupStore,
 )
 from . import wa_health
-from .config import Settings
+from .config import Settings, write_atomic
 
 KEEP_DAYS = 400
 _BOT_RE = re.compile(
@@ -83,10 +83,7 @@ class PageCounter:
             return {}
 
     def _save(self, data: Dict[str, dict]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, sort_keys=True), encoding="utf-8")
-        tmp.replace(self.path)
+        write_atomic(self.path, json.dumps(data, sort_keys=True))
 
     def _update(self, fn, today: Optional[date] = None) -> None:
         day = (today or date.today()).isoformat()

@@ -1,7 +1,6 @@
 """Plugin interfaces (ABCs) — the stable contract for extension packages.
 
-Three plug points:
-- OdometerSource     : where odometer readings come from.
+Two plug points:
 - TrajectoryProvider : how a route between two addresses is resolved.
 - PrivateCapPlugin   : how to report on private km vs. the yearly cap.
 
@@ -14,18 +13,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
-from ..models import (
-    CapAction,
-    OdometerReading,
-    TrajectoryResult,
-    Trip,
-)
-
-
-class OdometerSource(ABC):
-    @abstractmethod
-    def get_reading(self) -> Optional[OdometerReading]:
-        """Return the latest odometer reading, or None if unavailable."""
+from ..models import CapAction, TrajectoryResult, Trip
 
 
 class TrajectoryProvider(ABC):

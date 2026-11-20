@@ -67,7 +67,6 @@ class Settings(BaseSettings):
     route_on_deviation: bool = False
 
     # Plugin selection (entry-point names)
-    odometer_source: str = "whatsapp_manual"
     trajectory_provider: str = "maps_link"
     private_cap_plugin: str = "warn"
     # Optional per-user override: numbers in private_cap_override_numbers use
@@ -85,6 +84,10 @@ class Settings(BaseSettings):
     # How close (metres) a trip's end position must be to a known location's
     # coordinates to count as that place (per-location radius_m overrides).
     place_radius_m: int = 300
+    # A typed reading more than this many km above the last one is logged only
+    # when the driver sends it a second time (232020 for 23202 is a typo far
+    # more often than a trip, and the ledger cannot take it back).
+    confirm_trip_km: int = 1000
 
     # Paying subscribers (cars with ``subscription:`` in cars.yaml). They never
     # inherit RIT_EVENT_PLUGINS or the per-number cap override: only the event
@@ -238,6 +241,19 @@ class Settings(BaseSettings):
         ]
 
 
+# No car has driven this far; a reading above it is a typo or a sensor glitch.
+MAX_ODOMETER = 2_000_000
+
+
+def write_atomic(path: Path, text: str) -> None:
+    """Replace a file in one step, so a crash or power cut mid-write leaves the
+    old content instead of an empty or half-written file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
 def load_yaml(path: Path) -> dict:
     if not path.exists():
         return {}
@@ -267,9 +283,7 @@ def save_location(path: Path, name: str, address: str, **extra) -> None:
     entry["address"] = address
     entry.update({k: v for k, v in extra.items() if v is not None})
     data[key] = entry
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as fh:
-        yaml.safe_dump(data, fh, sort_keys=True, allow_unicode=True)
+    write_atomic(path, yaml.safe_dump(data, sort_keys=True, allow_unicode=True))
 
 
 _settings: Optional[Settings] = None

@@ -8,8 +8,6 @@ entry-point groups. Install the package alongside the core and select it via the
 
 All interfaces live in `rittenregistratie.plugins.base`:
 
-- `OdometerSource.get_reading() -> OdometerReading | None` — where odometer
-  readings come from.
 - `TrajectoryProvider.get_trajectory(origin, destination) -> TrajectoryResult` —
   how the route between two addresses is resolved.
 - `PrivateCapPlugin.on_evaluate(year, private_total_km, cap_km, trips) -> CapAction`
@@ -70,8 +68,11 @@ Each trip dict has the ledger fields: `timestamp` (ISO-8601), `start_odo`,
 optionally `route`, `private_detour_km`, `note`, `destination_raw`,
 `raw_message`, `sender` (the reporting phone, source of the Bestuurder column;
 empty for older and vehicle-logged trips). The core validates the returned list (types, `end >= start`,
-sorted by time, non-decreasing odometer chain) and aborts the export with an
-error to the user if it fails. The raw ledger is never modified by an export.
+sorted by odometer) and holds it to the ledger: the year's first and last
+reading must be unchanged, every row must start where the previous one ended,
+and every row must fall in the exported year. A plugin may relabel or split
+rows, never change what the car drove. If a check fails, or a plugin the car
+names is not installed, the export is aborted with an error to the user. The raw ledger is never modified by an export.
 
 Event plugins are selected **per car**. Each car has its own `EventBus`;
 `register(bus)` is called once per car that selects the plugin, and every
