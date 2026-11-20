@@ -203,7 +203,7 @@ def test_ritnummer_follows_the_order_a_plugin_returns(tmp_path):
 @pytest.mark.parametrize("change, error", [
     (lambda t: t[0].update(start_odo=90), "first or last"),
     (lambda t: t[-1].update(end_odo=999), "first or last"),
-    (lambda t: t.pop(1), "gap in the readings"),
+    (lambda t: t.pop(1), "dropped 40 km"),
     (lambda t: t[1].update(timestamp="2025-06-01T09:00:00"), "outside 2026"),
 ])
 def test_a_plugin_cannot_change_what_the_car_drove(tmp_path, change, error):
@@ -228,3 +228,15 @@ def test_rows_logged_in_the_repeated_october_hour_still_export(tmp_path):
     ledger.append(_trip("2026-10-25T02:10:00", 140, 180))
     rows = _rows(ExportService(settings, EventBus()).generate("car", 2026).path)
     assert [r[1:3] for r in rows[1:]] == [(100, 140), (140, 180)]
+
+
+def test_a_ledger_with_an_old_gap_still_exports(tmp_path):
+    """Kilometres nobody logged (an imported history) are a gap in the record,
+    not a fault of the export."""
+    settings = Settings(data_dir=tmp_path / "data", config_dir=tmp_path / "config",
+                        whatsapp_app_secret="")
+    ledger = RawLedger(settings.raw_ledger_file("car"))
+    ledger.append(_trip("2026-03-01T08:00:00", 100, 140))
+    ledger.append(_trip("2026-03-02T08:00:00", 175, 200))       # 35 km never logged
+    s = ExportService(settings, EventBus())
+    assert [r[1:3] for r in _rows(s.generate("car", 2026).path)[1:]] == [(100, 140), (175, 200)]
