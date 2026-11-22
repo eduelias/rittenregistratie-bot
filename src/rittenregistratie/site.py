@@ -43,8 +43,8 @@ NAME = "RittenRegistratie-bot"
 # characters (the brand comes from the WebSite node in the JSON-LD), the description
 # under 155.
 TITLE = "Rittenregistratie via WhatsApp, zonder app of kastje"
-DESCRIPTION = ("Rittenregistratie via WhatsApp voor zzp en zakelijke auto: app je kilometerstand en "
-               "bestemming, krijg een Excel voor de Belastingdienst. 14 dagen gratis.")
+DESCRIPTION = ("Rittenregistratie via WhatsApp voor je leaseauto of auto van de zaak: app je "
+               "kilometerstand, krijg een Excel voor de Belastingdienst. 14 dagen gratis.")
 
 # Guide pages: path -> (file under site/, <title>, meta description). Indexed, listed in
 # the sitemap, counted like the landing page.
