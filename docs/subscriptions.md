@@ -315,7 +315,9 @@ Operations:
 - [x] The bot speaks Dutch or English per number (`english` / `nederlands`),
       default Dutch (#50); the trip template exists in both (#51).
 - [ ] The number is the Meta-provided +1 555; a Dutch number would look more
-      trustworthy to customers.
+      trustworthy to customers. When it changes, also change the "Van welk
+      nummer" / "Which number" answer on both landing pages (`site/index.html`,
+      `site/en/index.html`), which names the +1 555 prefix.
 - [x] WhatsApp health: quality rating and messaging limit every 6 hours
       (`wa_health.py`), alert on a drop or change, shown in the weekly report.
       On 2026-11-02: GREEN, TIER_2K (Meta now reports the limit per business

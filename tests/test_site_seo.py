@@ -66,8 +66,11 @@ def test_titles_and_descriptions_fit_search_results(client):
     assert len(TITLE) <= 60 and len(DESCRIPTION) <= 155
     home = c.get("/").text
     assert f"<title>{TITLE}</title>" in home
-    for kind in ("kilometerregistratie", "zzp", "bestelauto", "Excel", "privégebruik"):
+    for kind in ("kilometerregistratie", "leaseauto", "zzp", "bestelauto", "Excel", "privégebruik"):
         assert kind in home, kind
+    # the keurmerk answer links to the guide paragraph that carries the source
+    assert 'href="/rittenregistratie-eisen#sluitend"' in home
+    assert 'id="sluitend"' in c.get("/rittenregistratie-eisen").text
     for path, (_, title, description) in GUIDES.items():
         assert len(description) <= 155, path
         assert len(f"{title} · RittenRegistratie-bot") <= 70, path

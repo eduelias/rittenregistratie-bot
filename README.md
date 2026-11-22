@@ -21,6 +21,10 @@ Designed to help holders of the Dutch
 keep the watertight trip administration the Belastingdienst requires, and to run
 comfortably on a Raspberry Pi.
 
+**Hosted version:** [rrbot.nl](https://rrbot.nl) runs this code as a paid service.
+Subscribers' cars run without event plugins: trips are logged only by the messages
+the driver sends, and the export is exactly what was sent.
+
 > **Disclaimer**
 > This software helps you *record* trips. It is **not tax advice** and does not
 > guarantee acceptance by the Belastingdienst. You are solely responsible for
