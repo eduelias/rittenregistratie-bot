@@ -21,7 +21,8 @@ $head_meta
   <div class="wrap two">
     <div>
       <h1>Je rittenregistratie, gewoon via WhatsApp.</h1>
-      <p class="lead">Stuur na elke rit je kilometerstand en bestemming. RittenRegistratie-bot houdt je
+      <p class="lead">Rijd je in een auto van de zaak, bijvoorbeeld een leaseauto van je werkgever?
+      Stuur na elke rit je kilometerstand en bestemming. RittenRegistratie-bot houdt je
       kilometerregistratie bij en stuurt je op verzoek een Excel met precies de velden die de
       Belastingdienst per rit vraagt.</p>
       <p><a class="btn" href="#aanmelden">Probeer 14 dagen gratis</a></p>
@@ -54,11 +55,14 @@ $head_meta
 
 <section class="wrap">
   <h2>Voor wie</h2>
-  <p>Voor zzp'ers, ondernemers en werknemers met een auto of bestelauto van de zaak die willen laten
-  zien dat ze niet meer dan 500 km per jaar privé rijden. Werknemers hebben dat bewijs nodig voor hun
-  Verklaring geen privégebruik auto. Rijd je zakelijk met je eigen auto, dan houd je zo je zakelijke
-  kilometers bij. Wie nu een rittenregistratie in Excel of op papier bijhoudt, stuurt voortaan na elke
-  rit één WhatsApp-bericht.</p>
+  <p>Vooral voor werknemers en dga's met een auto van de zaak, bijvoorbeeld een leaseauto van de
+  werkgever, die willen laten zien dat ze niet meer dan 500 km per jaar privé rijden. Dat bewijs hebben
+  ze nodig voor hun Verklaring geen privégebruik auto. Ook voor zzp'ers en ondernemers met een auto of
+  bestelauto van de zaak die hetzelfde willen laten zien. Rijd je zakelijk met je eigen auto, dan houd je zo je zakelijke kilometers
+  bij. Wie nu een rittenregistratie in Excel of op papier bijhoudt, stuurt voortaan na elke rit één
+  WhatsApp-bericht.</p>
+  <p>Wil je eerst weten wat de regels zijn? Lees <a href="/rittenregistratie-eisen">wat er in een
+  rittenregistratie moet</a>, met bij elke regel de bron.</p>
 </section>
 
 <section class="wrap">
@@ -71,6 +75,19 @@ $head_meta
   </div>
   <p class="fine">RittenRegistratie-bot legt vast wat jij doorgeeft. Het is geen belastingadvies en geeft geen garantie dat de
   Belastingdienst je administratie accepteert; jij blijft verantwoordelijk voor de juistheid ervan.</p>
+</section>
+
+<section class="wrap">
+  <h2>Wie zit erachter?</h2>
+  <p>RittenRegistratie-bot, kortweg rrbot, is gebouwd door één ontwikkelaar en begon als
+  rittenregistratie voor de auto van de zaak van de maker zelf. Het is een dienst van Du7 Technology
+  Services; het KvK-nummer en het adres staan onderaan elke pagina.
+  <a href="mailto:$support_email">Mail ons</a>, dan antwoordt de maker zelf.</p>
+  <p>De code is open source. Op <a href="https://github.com/eduelias/rittenregistratie-bot">GitHub</a>
+  kun je nalezen hoe de bot een rit vastlegt en hoe de Excel wordt gemaakt. Stoppen wij ooit met de
+  dienst, dan hoor je dat een maand vooraf en krijg je het ongebruikte deel terug
+  (<a href="/voorwaarden">voorwaarden</a>, artikel 4). Met <code>excel all</code> haal je al je ritten
+  op wanneer je wilt.</p>
 </section>
 
 <section id="prijs" class="wrap">
@@ -102,6 +119,9 @@ $head_meta
   <details><summary>Waarom betaal ik eerst € $mandate_nl?</summary><p>Met die betaling geef je via iDEAL of creditcard een machtiging, zodat het abonnement na de proefperiode automatisch kan worden afgeschreven. Je bank toont het als een betaling aan Du7 Technology Services via Mollie.</p></details>
   <details><summary>Hoe zeg ik op?</summary><p>Met de knop <a href="/opzeggen">Abonnement opzeggen</a> (onderaan elke pagina), door <code>opzeggen</code> naar de bot te sturen, of per mail. Er wordt daarna niets meer afgeschreven en de bot werkt tot het eind van je betaalde periode (of proefperiode). Stuur daarvoor <code>excel all</code> om al je ritten te bewaren.</p></details>
   <details><summary>Heb ik een app of kastje nodig?</summary><p>Nee. Alleen WhatsApp op het nummer waarmee je je aanmeldt.</p></details>
+  <details><summary>Legt de bot mijn ritten automatisch vast?</summary><p>Nee. Je stuurt na elke rit zelf één bericht met je kilometerstand en bestemming. De bot heeft geen koppeling met je auto en volgt je telefoon niet; een locatie ziet hij alleen als je die zelf deelt.</p></details>
+  <details><summary>Heeft RittenRegistratie-bot het Keurmerk RitRegistratieSystemen?</summary><p>Nee. Gebruik je een systeem met dat keurmerk, dan gaat de Belastingdienst ervan uit dat je registratie sluitend is (<a href="https://www.belastingdienst.nl/wps/wcm/connect/bldcontentnl/belastingdienst/zakelijk/ondernemen/administratie/keurmerk-voor-rittenregistratie">bron</a>); dat voordeel heb je bij de bot niet. De bot legt wel elke rit vast op het moment dat je hem stuurt en wijzigt achteraf niets. Meer hierover lees je bij <a href="/rittenregistratie-eisen#sluitend">wanneer een rittenregistratie sluitend is</a>.</p></details>
+  <details><summary>Van welk nummer krijg ik berichten?</summary><p>Het nummer van de bot begint met +1&nbsp;555. Dat nummer hebben we van Meta (WhatsApp) gekregen; het is geen Nederlands 06-nummer. Na het aanmelden staat op de bevestigingspagina een knop waarmee je het gesprek zelf start.</p></details>
   <details><summary>Wat gebeurt er met mijn gegevens?</summary><p>Je ritten staan op onze eigen server in Nederland en worden alleen gebruikt om jouw rittenregistratie te maken. Berichten lopen via WhatsApp (Meta), betalingen via Mollie. Zie de <a href="/privacy">privacyverklaring</a>.</p></details>
   <details><summary>Ik heb meer auto's of meerdere bestuurders.</summary><p>Dat kan de bot, maar het zit nog niet in de online aanmelding. Mail ons, dan regelen we het.</p></details>
 </section>

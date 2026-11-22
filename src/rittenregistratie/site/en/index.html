@@ -56,7 +56,7 @@ $head_meta
 
 <section class="wrap">
   <h2>Who it's for</h2>
-  <p>Mainly for employees with a company or lease car who want to show they drive no more than 500 km
+  <p>Mainly for employees and director-shareholders (dga's) with a company or lease car who want to show they drive no more than 500 km
   privately a year. That record backs up your Verklaring geen privégebruik auto, the statement that saves
   you the bijtelling (the taxable benefit for private use). Also for self-employed people (zzp'ers) and
   business owners with a car or van of the business, and for anyone who drives for work in their own car
@@ -76,6 +76,18 @@ $head_meta
   </div>
   <p class="fine">RittenRegistratie-bot records what you send it. It isn't tax advice and doesn't guarantee
   that the Belastingdienst accepts your records; you stay responsible for them being correct.</p>
+</section>
+
+<section class="wrap">
+  <h2>Who is behind this?</h2>
+  <p>RittenRegistratie-bot, rrbot for short, is built by one developer and began as the trip log for
+  the maker's own company car. It's a service of Du7 Technology Services; the KvK (Chamber of Commerce)
+  number and address are at the bottom of every page.
+  <a href="mailto:$support_email">Email us</a> and the person who built it answers.</p>
+  <p>The code is open source. On <a href="https://github.com/eduelias/rittenregistratie-bot">GitHub</a>
+  you can read how the bot records a trip and how the Excel is made. If we ever stop the service, you
+  hear a month ahead and get the unused part back (<a href="/en/terms">terms</a>, article 4). With
+  <code>excel all</code> you can fetch all your trips whenever you want.</p>
 </section>
 
 <section id="price" class="wrap">
@@ -101,6 +113,9 @@ $head_meta
   <details><summary>Can I use a foreign phone number?</summary><p>Yes, any number that has WhatsApp. Enter it with the country code, for example +44 7700 900123.</p></details>
   <details><summary>How do I cancel?</summary><p>Send <code>unsubscribe</code> to the bot, use the <a href="/en/cancel">cancel page</a> (linked at the bottom of every page), or email us. Nothing is charged after that, and the bot keeps working until the end of your paid period (or trial). Send <code>excel all</code> before then to keep all your trips.</p></details>
   <details><summary>Do I need an app or a device?</summary><p>No. Just WhatsApp on the number you sign up with.</p></details>
+  <details><summary>Does the bot log my trips automatically?</summary><p>No. You send one message after every trip, with your odometer reading and destination. The bot isn't connected to your car and doesn't track your phone; it only sees a location when you share one yourself.</p></details>
+  <details><summary>Does RittenRegistratie-bot have the Keurmerk RitRegistratieSystemen?</summary><p>No. If you use a system with that quality mark, the Belastingdienst assumes your log is complete, or sluitend (<a href="https://www.belastingdienst.nl/wps/wcm/connect/bldcontentnl/belastingdienst/zakelijk/ondernemen/administratie/keurmerk-voor-rittenregistratie">source, in Dutch</a>); the bot doesn't give you that. The bot does record every trip at the moment you send it, and changes nothing afterwards. More under <a href="/en/rittenregistratie-requirements#sluitend">when a trip log is sluitend</a>.</p></details>
+  <details><summary>Which number will message me?</summary><p>The bot's number starts with +1&nbsp;555. Meta (WhatsApp) gave us that number; it isn't a Dutch mobile number. After you sign up, the confirmation page has a button to start the chat yourself.</p></details>
   <details><summary>What happens to my data?</summary><p>Your trips are stored on our own server in the Netherlands and only used to make your trip log. Messages go through WhatsApp (Meta), payments through Mollie. See the <a href="/en/privacy">privacy statement</a>.</p></details>
   <details><summary>I have more cars or several drivers.</summary><p>The bot can do that, but it isn't in the online signup yet. Email us and we'll set it up.</p></details>
 </section>

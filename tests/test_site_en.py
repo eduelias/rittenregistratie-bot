@@ -57,7 +57,8 @@ def test_every_pair_links_both_ways(client, nl, en):
     assert _links(nl_page.text) == _links(en_page.text) == expected
     assert f'<link rel="canonical" href="{BASE}{en}">' in en_page.text
     assert f'class="lang" href="{nl}"' in en_page.text and '<html lang="en">' in en_page.text
-    assert "$" not in re.sub(r"<script.*?</script>", "", en_page.text, flags=re.S)  # all filled
+    for page in (nl_page, en_page):
+        assert "$" not in re.sub(r"<script.*?</script>", "", page.text, flags=re.S)  # all filled
 
 
 def test_english_guide_and_legal_pages(client):
@@ -67,6 +68,9 @@ def test_english_guide_and_legal_pages(client):
         assert len(f"{title} · RittenRegistratie-bot") <= 70 and len(description) <= 155
         assert page.count("<h1") == 1 and "belastingdienst.nl" in page
         assert "not tax advice" in page.lower() and 'href="/en/#signup"' in page
+    # the landing page's keurmerk answer links to this guide paragraph
+    assert 'id="sluitend"' in c.get("/en/rittenregistratie-requirements").text
+    assert 'href="/en/rittenregistratie-requirements#sluitend"' in c.get("/en/").text
     for path, original in (("/en/terms", "/voorwaarden"), ("/en/privacy", "/privacy")):
         page = c.get(path).text
         assert "Dutch version prevails" in page and f'href="{original}"' in page
